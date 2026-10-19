@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的品牌｜社群工作台</title>
+<style>
+  /* ===== 顏色和風格都在這裡改 ===== */
+  :root {
+    --main: #8a5a3b;
+    --bg: #f6efe8;
+    --text: #2b2420;
+    --line: #e4d8cc;
+    --radius: 10px;
+    --font: "Microsoft JhengHei", "PingFang TC", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: var(--bg); color: var(--text); }
+  button { font: inherit; font-size: 14px; border: 0; border-radius: calc(var(--radius) / 2); padding: 7px 14px; cursor: pointer; background: var(--main); color: #fff; }
+  button.light { background: #fff; color: var(--main); border: 1px solid var(--line); }
+
+  header { background: var(--main); color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; flex: 1; }
+  header button { background: rgba(255,255,255,.18); }
+
+  main { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(280px, 1.2fr) 340px; gap: 20px; padding: 20px; max-width: 1300px; margin: 0 auto; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } .phone { margin: 0 auto; } }
+
+  .box { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+  .box h2 { margin: 0 0 6px; font-size: 16px; color: var(--main); }
+  label { display: block; font-size: 14px; margin: 12px 0 4px; }
+  input, textarea { width: 100%; padding: 8px 10px; font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: calc(var(--radius) / 2); background: #fff; color: var(--text); }
+  textarea { min-height: 70px; resize: vertical; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+  /* 平台分頁 */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tabs button { background: #fff; color: var(--main); border: 1px solid var(--line); }
+  .tabs button.on { background: var(--main); color: #fff; }
+  #post { min-height: 340px; line-height: 1.7; }
+  .count { font-size: 13px; color: #888; text-align: right; margin-top: 4px; }
+
+  /* 手機框 */
+  .phone { width: 320px; height: 620px; border: 10px solid #111; border-radius: 36px; background: #fff; overflow-y: auto; align-self: start; font-size: 14px; }
+  .p-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--main); flex: none; }
+  .small { font-size: 12px; color: #888; }
+  .p-text { padding: 0 12px 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  .p-img { background: linear-gradient(135deg, var(--main), var(--bg)); display: flex; align-items: flex-end; }
+  .p-img span { margin: 12px; padding: 6px 12px; background: rgba(255,255,255,.9); border-radius: var(--radius); font-size: 18px; font-weight: bold; }
+  .wide { aspect-ratio: 4 / 3; }
+  .square { aspect-ratio: 1 / 1; }
+  .empty { color: #aaa; }
+  .fb-bar { display: flex; justify-content: space-around; padding: 10px; border-top: 1px solid #eee; color: #555; }
+  .ig-bar { padding: 8px 12px; font-size: 18px; letter-spacing: 6px; }
+  .line-bg { background: #8fa9d4; min-height: 100%; padding: 12px; }
+  .line-top { text-align: center; color: #fff; font-weight: bold; margin-bottom: 14px; }
+  .line-row { display: flex; gap: 8px; align-items: flex-start; }
+  .bubble { background: #fff; border-radius: 16px; padding: 10px 12px; white-space: pre-wrap; line-height: 1.6; max-width: 230px; word-break: break-word; }
+  .th { display: flex; gap: 10px; padding: 14px 12px; }
+  .th .p-text { padding: 4px 0 8px; }
+
+  /* 跳出視窗 */
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .modal.show { display: flex; }
+  .modal .box { width: min(760px, 100%); max-height: 90vh; overflow: auto; }
+  .modal textarea { min-height: 160px; }
+  .item { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 8px 0; }
+  .item div { flex: 1; }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 14px; display: none; z-index: 20; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="brandTitle">我的品牌｜社群工作台</h1>
+  <button id="btnNew">＋ 新的一篇</button>
+  <button id="btnList">📁 我的貼文</button>
+  <button id="btnSet">⚙ 設定</button>
+</header>
+
+<main>
+  <!-- 左邊：素材卡 -->
+  <section class="box">
+    <h2>素材卡</h2>
+    <div id="fields"></div>
+    <div class="actions">
+      <button id="btnPrompt">🧩 組好指令</button>
+      <button class="light" id="btnPaste">📥 貼回 AI 寫好的</button>
+      <button class="light" id="btnSave">💾 存檔</button>
+    </div>
+  </section>
+
+  <!-- 中間：平台分頁＋貼文框 -->
+  <section class="box">
+    <div class="tabs" id="tabs"></div>
+    <textarea id="post" placeholder="把這個平台的貼文貼在這裡…"></textarea>
+    <div class="count" id="count">0 字</div>
+    <div class="actions"><button class="light" id="btnCopy">📋 複製這一篇</button></div>
+  </section>
+
+  <!-- 右邊：手機預覽 -->
+  <section class="phone" id="phone"></section>
+</main>
+
+<!-- 設定 -->
+<div class="modal" id="mSet"><div class="box">
+  <h2>⚙ 設定</h2>
+  <label>品牌規格（把 品牌規格.md 整份貼進來）</label>
+  <textarea id="setSpec" style="min-height:260px"></textarea>
+  <label>檢查清單（可以不填）</label>
+  <textarea id="setCheck"></textarea>
+  <div class="actions"><button id="btnSetSave">儲存</button><button class="light" data-close>關閉</button></div>
+</div></div>
+
+<!-- 組好的指令 -->
+<div class="modal" id="mPrompt"><div class="box">
+  <h2>🧩 組好的指令</h2>
+  <p class="small">按「複製」，貼到 Codex 新對話（或 ChatGPT）。寫好以後，按「📥 貼回 AI 寫好的」。</p>
+  <textarea id="promptText" style="min-height:360px" readonly></textarea>
+  <div class="actions"><button id="btnPromptCopy">複製</button><button class="light" data-close>關閉</button></div>
+</div></div>
+
+<!-- 貼回 -->
+<div class="modal" id="mPaste"><div class="box">
+  <h2>📥 貼回 AI 寫好的</h2>
+  <p class="small">把 AI 的回覆整段貼進來，它會照【平台】的標題，自動分到每個分頁。</p>
+  <textarea id="pasteText" style="min-height:300px"></textarea>
+  <div class="actions"><button id="btnPasteGo">分到各平台</button><button class="light" data-close>關閉</button></div>
+  <div id="pasteAsk" class="small" style="white-space:pre-wrap"></div>
+</div></div>
+
+<!-- 我的貼文 -->
+<div class="modal" id="mList"><div class="box">
+  <h2>📁 我的貼文</h2>
+  <div id="list"></div>
+  <div class="actions"><button class="light" data-close>關閉</button></div>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+  // ===== 我的品牌、平台、欄位都在這裡改 =====
+  const BRAND = { name: '小島咖啡', account: 'xiaodao.coffee' };
+  const PLATFORMS = ['FB', 'IG', 'LINE'];   // 可以用：FB、IG、LINE、Threads
+  const FIELDS = [
+    { id: 'date',   label: '活動日期',             type: 'date' },
+    { id: 'topic',  label: '活動名稱',             type: 'text',     ph: '例：開店七週年' },
+    { id: 'detail', label: '內容、價格、時間',     type: 'textarea', ph: '以島哥最後一次說的為準' },
+    { id: 'who',    label: '誰可以、怎麼參加',     type: 'text' },
+    { id: 'only',   label: '只能在 LINE 講的',     type: 'text' },
+    { id: 'secret', label: '先不要講的',           type: 'text' },
+    { id: 'words',  label: '島哥這次說不要用的字', type: 'text' },
+    { id: 'ask',    label: '❓ 還不確定的',         type: 'textarea' }
+  ];
+
+  // ===== 下面是程式，不用改 =====
+  const $ = id => document.getElementById(id);
+  const K_DRAFT = 'demo-draft', K_POSTS = 'demo-posts', K_SET = 'demo-settings';
+  const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
+  const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const toast = msg => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 1600); };
+
+  // 示範用：第一次打開，先把小島的品牌規格放進設定
+  if (!localStorage.getItem(K_SET)) store(K_SET, { spec: "## 1. 品牌口氣（寫具體）\n\n像島哥本人跟熟客聊天。具體來說：\n\n- 句子短，一句只講一件事。\n- 用「你」，不用「您」、不用「親愛的」。\n- 驚嘆號一篇最多 1 個。\n- 講豆子：講「味道」和「故事」，不講便宜、不催人買。\n- 不寫「快來」「要買要快」「錯過可惜」這種催促的話。\n- 「慢慢來，比較快。」可以用，但一篇最多一次，不是每篇都要。\n\n## 2. 不能用的字\n\n- 網美風誇張字：爆表、必喝、神級、太狂、一定要衝、狂歡、史上最\n- 講便宜的字：CP 值、超划算、俗又大碗\n- 大賣場用語：「咖啡豆產品」→ 一律說「豆子」\n\n## 3. 不准自己加的東西\n\n老闆沒說過的，**一個字都不要加**：\n\n- 豆子的產地細節（海拔、農場、處理法、烘焙度）\n- 老闆沒說的風味和口感\n- 老闆沒說的活動規則（例如「限開賣當天」「預購也算名額」）\n- 「神秘驚喜」「限時倒數」這種製造緊張的話\n\n不確定的，先問我，不要猜。\n\n## 4. 三個平台的規則＋骨架＋範例\n\n### Facebook\n\n- 看的人：熟客、年紀比較大。\n- 4～6 段，每段 1～3 句。先講一個小故事或店裡的畫面，再講活動。\n- emoji 最多 2 個。\n- 不放 hashtag。\n\n**骨架（照這個格子填）：**\n\n```\n【小島日常】或【島哥的＿＿＿通知】\n（第 1 段：店裡的一個小畫面，1～2 句）\n（第 2 段：島哥說的話或想法，1～2 句）\n（第 3 段：活動是什麼、哪一天、多少錢）\n（第 4 段：優惠和條件，寫清楚誰可以、要做什麼）\n（可選：慢慢來，比較快。）\n\n📍 小島咖啡｜台中市西區小島巷 8 號\n週三～週日 11:00–19:00\n```\n\n**範例（照這篇的感覺寫）：**\n\n```\n【小島日常】\n這週烘了一批哥倫比亞，豆子在烘豆機裡慢慢轉，整間店都是焦糖的味道。\n\n島哥說，烘豆跟做人一樣，急不得。\n這批豆子要休息三天才會好喝，所以下週三才會上架。\n\n慢慢來，比較快。\n\n📍 小島咖啡｜台中市西區小島巷 8 號\n週三～週日 11:00–19:00\n```\n\n### Instagram\n\n- 看的人：年輕人，先看照片。\n- 整篇不超過 8 行（hashtag 不算）。一行一件事。\n- 用「.」空行分段。\n- 一定要 tag `@xiaodao.coffee`。\n- hashtag 5～8 個，放最後，一定包含：#小島咖啡 #台中咖啡 #自家烘焙\n\n**骨架：**\n\n```\n（第 1 行：一句短話＋1 個 emoji）\n\n（2～4 行：名稱、味道或重點，一行一件事）\n.\n（日期／時間）\n.\n@xiaodao.coffee\n#小島咖啡 #台中咖啡 #自家烘焙 ＋2～5 個這次活動的 hashtag\n```\n\n**範例：**\n\n```\n下週三見 ☕\n\n哥倫比亞 慧蘭 新烘好\n焦糖、堅果、一點點紅蘋果\n.\n慢慢來，比較快。\n.\n@xiaodao.coffee\n#小島咖啡 #台中咖啡 #自家烘焙 #手沖咖啡 #慢慢來\n```\n\n### LINE 官方帳號\n\n- 看的人：會員，想知道優惠。\n- 整篇在手機一個畫面內看完（大約 8 行內）。\n- 第一行就講好處。\n- ✔ 重點最多 3 點。\n- 一定要寫「怎麼做」。\n- 最後一行固定署名。\n\n**骨架：**\n\n```\n【會員限定】＋一句好處　（優惠用這個）\n【小島公告】＋一句重點　（營業時間、公告用這個）\n\n✔ 重點 1\n✔ 重點 2\n✔ 重點 3（最多 3 點）\n\n👉 （怎麼做，例如：直接回覆「＿＿」）\n\n小島咖啡 島哥\n```\n\n**範例：**\n\n```\n【會員限定】哥倫比亞新豆預購開始囉！\n\n✔ 會員預購 9 折\n✔ 下週三起到店取豆\n\n👉 直接回覆「預購＋數量」就可以\n\n小島咖啡 島哥\n```\n\n## 5. 平台限定的規則（寫具體）\n\n- 老闆說「只在 LINE 講」的，**不寫到 FB、IG**。\n- 老闆說「先不要講」「還沒確定」的，**三篇都不寫**。\n- 會員活動如果老闆說「三個平台都要」，FB、IG 也要寫，結尾加一句「還不是會員的，可以加小島的 LINE」。\n\n## 6. 寫之前一定要檢查\n\n- 價格、日期以老闆**最後一次**說的為準。\n- 日期後面寫星期幾，要對（例：10/10 是週六）。\n- 營業時間有變的（提早關、開比較晚），要寫清楚。", check: "> 卡住的同學，把這份改名成 `檢查清單.md` 放進資料夾。\n\n## 事實（拿活動卡來對）\n\n1. 價格、日期、星期幾、時間，跟活動卡一模一樣嗎？\n2. 有沒有活動卡上沒有的東西？（產地細節、風味、口感、規則、名額、驚喜）有的話刪掉。\n3. 優惠的條件寫對了嗎？（誰可以、要買什麼才有、送幾個、限量多少）\n4. 老闆改過口的地方，用的是最後的版本嗎？\n\n## 平台\n\n5. 「只能在 LINE 講」的事，有沒有跑到 FB、IG？\n6. 「先不要講」的事，三篇都沒有出現嗎？\n7. 每個平台的固定結尾都有嗎？（FB：地址＋營業時間／IG：tag＋hashtag／LINE：署名）\n\n## 口氣\n\n8. 有沒有不能用的字？（品牌規格裡的＋這次老闆新說不要的）\n9. 有沒有催人買的話？（快來、要買要快、錯過可惜）\n10. 讀起來像島哥嗎？還是像百貨公司、像網美？\n\n## 檢查完\n\n- 每篇每條都寫 ✅ 或 ❌。\n- 有 ❌ 的，先自己改好，再給我看：檢查結果＋改了哪裡。" });
+
+  document.title = BRAND.name + '｜社群工作台';
+  $('brandTitle').textContent = BRAND.name + '｜社群工作台';
+
+  const blank = () => ({ id: null, fields: {}, posts: {}, tab: PLATFORMS[0] });
+  let cur = load(K_DRAFT, blank());
+  if (!PLATFORMS.includes(cur.tab)) cur.tab = PLATFORMS[0];
+
+  // 素材卡表單
+  $('fields').innerHTML = FIELDS.map(f => {
+    const ph = f.ph ? ` placeholder="${esc(f.ph)}"` : '';
+    const input = f.type === 'textarea'
+      ? `<textarea id="f_${f.id}"${ph}></textarea>`
+      : `<input type="${f.type}" id="f_${f.id}"${ph}>`;
+    return `<label for="f_${f.id}">${esc(f.label)}</label>${input}`;
+  }).join('');
+
+  // 平台分頁
+  $('tabs').innerHTML = PLATFORMS.map(p => `<button data-p="${p}">${p}</button>`).join('');
+  $('tabs').onclick = e => { const p = e.target.dataset.p; if (p) { cur.tab = p; fill(); } };
+
+  // 日期加星期幾：2026-10-15 → 2026/10/15（四）
+  function dateText(v) {
+    if (!v) return '';
+    const [y, m, d] = v.split('-').map(Number);
+    return `${y}/${m}/${d}（${'日一二三四五六'[new Date(y, m - 1, d).getDay()]}）`;
+  }
+  const topic = () => {
+    const f = FIELDS.find(f => f.type !== 'date');
+    return f ? (cur.fields[f.id] || '').trim() : '';
+  };
+
+  // 手機預覽
+  function preview() {
+    const raw = cur.posts[cur.tab] || '';
+    const text = raw ? esc(raw) : '<span class="empty">貼文內容會出現在這裡</span>';
+    const t = topic() ? esc(topic()) : '<span class="empty">（素材卡第一格）</span>';
+    const name = esc(BRAND.name), acc = esc(BRAND.account);
+    const views = {
+      FB: `<div class="p-head"><div class="avatar"></div><div><b>${name}</b><div class="small">剛剛 · 🌐</div></div></div>
+           <div class="p-text">${text}</div>
+           <div class="p-img wide"><span>${t}</span></div>
+           <div class="fb-bar"><span>👍 讚</span><span>💬 留言</span><span>↗ 分享</span></div>`,
+      IG: `<div class="p-head"><div class="avatar"></div><b>${acc}</b></div>
+           <div class="p-img square"><span>${t}</span></div>
+           <div class="ig-bar">♡ 💬 ➤</div>
+           <div class="p-text"><b>${acc}</b> ${text}</div>`,
+      LINE: `<div class="line-bg"><div class="line-top">${name}</div>
+           <div class="line-row"><div class="avatar"></div><div class="bubble">${text}</div></div></div>`,
+      Threads: `<div class="th"><div class="avatar"></div><div><b>${acc}</b> <span class="small">剛剛</span>
+           <div class="p-text">${text}</div><div class="small">♡ 💬 🔁 ➤</div></div></div>`
+    };
+    $('phone').innerHTML = views[cur.tab] || views.FB;
+    $('count').textContent = raw.length + ' 字';
+  }
+
+  // 把資料放回畫面
+  function fill() {
+    FIELDS.forEach(f => $('f_' + f.id).value = cur.fields[f.id] || '');
+    $('post').value = cur.posts[cur.tab] || '';
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.p === cur.tab));
+    preview();
+    store(K_DRAFT, cur);
+  }
+
+  // 打字 → 自動暫存＋預覽
+  FIELDS.forEach(f => $('f_' + f.id).addEventListener('input', e => { cur.fields[f.id] = e.target.value; preview(); store(K_DRAFT, cur); }));
+  $('post').addEventListener('input', e => { cur.posts[cur.tab] = e.target.value; preview(); store(K_DRAFT, cur); });
+
+  // 跳出視窗
+  const open = id => $(id).classList.add('show');
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('.modal').classList.remove('show'));
+  document.querySelectorAll('.modal').forEach(m => m.onclick = e => { if (e.target === m) m.classList.remove('show'); });
+
+  function copy(text, msg) {
+    const fallback = () => prompt('請手動複製：', text);
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast(msg), fallback); else fallback();
+  }
+
+  // 設定
+  $('btnSet').onclick = () => { const s = load(K_SET, {}); $('setSpec').value = s.spec || ''; $('setCheck').value = s.check || ''; open('mSet'); };
+  $('btnSetSave').onclick = () => { store(K_SET, { spec: $('setSpec').value, check: $('setCheck').value }); $('mSet').classList.remove('show'); toast('設定存好了'); };
+
+  // 組好指令
+  function buildPrompt() {
+    const s = load(K_SET, {});
+    const plats = PLATFORMS.join('、');
+    const card = FIELDS.map(f => {
+      const v = (f.type === 'date' ? dateText(cur.fields[f.id]) : (cur.fields[f.id] || '').trim());
+      return `${f.label}：${v || '（空白）'}`;
+    }).join('\n');
+    let t = `（這段只要回覆文字，不要建立或修改任何檔案。）
+
+你是「${BRAND.name}」的小編。請照下面的品牌規格，用素材卡的內容，寫 ${plats} 的貼文，每個平台一篇。
+
+【規則】
+- 素材卡上沒有的事，不要寫。
+- 「只能在某個平台說的」，只寫在那個平台。
+- 「先不要講的」，每一篇都不能寫。
+- 「還不確定的」不要寫進貼文，寫完在最後列出來問我。
+
+【回覆格式】每個平台用標題分開，像這樣：
+${PLATFORMS.map(p => `【${p}】\n（${p} 的貼文）`).join('\n')}
+【要問我的】
+（沒有就寫「沒有」）
+
+===== 品牌規格 =====
+${s.spec || '（還沒填：請到 ⚙ 設定 貼上品牌規格）'}
+
+===== 素材卡 =====
+${card}`;
+    if ((s.check || '').trim()) t += `\n\n===== 寫完照這張清單檢查，有 ❌ 先自己改好 =====\n${s.check}`;
+    return t;
+  }
+  $('btnPrompt').onclick = () => { $('promptText').value = buildPrompt(); open('mPrompt'); };
+  $('btnPromptCopy').onclick = () => copy($('promptText').value, '已複製，去貼給 AI 吧');
+
+  // 貼回：照【FB】【IG】…分到各分頁
+  $('btnPaste').onclick = () => { $('pasteText').value = ''; $('pasteAsk').textContent = ''; open('mPaste'); };
+  $('btnPasteGo').onclick = () => {
+    const txt = $('pasteText').value;
+    const names = PLATFORMS.concat(['要問我的']);
+    const re = new RegExp('【(' + names.join('|') + ')】', 'g');
+    const out = {};
+    let m, last = null, from = 0;
+    while ((m = re.exec(txt))) { if (last) out[last] = txt.slice(from, m.index).trim(); last = m[1]; from = re.lastIndex; }
+    if (last) out[last] = txt.slice(from).trim();
+    const got = PLATFORMS.filter(p => out[p]);
+    if (!got.length) { $('pasteAsk').textContent = '找不到【平台】的標題。請一篇一篇貼到分頁裡。'; return; }
+    got.forEach(p => cur.posts[p] = out[p]);
+    fill();
+    $('pasteAsk').textContent = `放好了：${got.join('、')}。` + (out['要問我的'] ? `\nAI 想問你：${out['要問我的']}` : '');
+  };
+
+  // 一鍵複製
+  $('btnCopy').onclick = () => copy(cur.posts[cur.tab] || '', `${cur.tab} 已複製`);
+
+  // 存檔
+  $('btnSave').onclick = () => {
+    const posts = load(K_POSTS, []);
+    const name = [cur.fields.date || '', topic() || '未命名'].join(' ').trim();
+    const rec = { id: cur.id || Date.now(), name, time: new Date().toLocaleString('zh-TW'), fields: { ...cur.fields }, posts: { ...cur.posts } };
+    cur.id = rec.id;
+    const i = posts.findIndex(p => p.id === rec.id);
+    if (i >= 0) posts[i] = rec; else posts.unshift(rec);
+    store(K_POSTS, posts); store(K_DRAFT, cur);
+    toast('存好了：' + name);
+  };
+
+  // 我的貼文
+  function showList() {
+    const posts = load(K_POSTS, []);
+    $('list').innerHTML = posts.length ? posts.map(p =>
+      `<div class="item"><div><b>${esc(p.name)}</b><div class="small">${esc(p.time)}</div></div>
+       <button data-open="${p.id}">打開</button><button class="light" data-del="${p.id}">刪除</button></div>`).join('')
+      : '<p class="small">還沒有存過的貼文。</p>';
+  }
+  $('btnList').onclick = () => { showList(); open('mList'); };
+  $('list').onclick = e => {
+    const posts = load(K_POSTS, []);
+    const o = e.target.dataset.open, d = e.target.dataset.del;
+    if (o) { const p = posts.find(p => String(p.id) === o); cur = { id: p.id, fields: { ...p.fields }, posts: { ...p.posts }, tab: PLATFORMS[0] }; fill(); $('mList').classList.remove('show'); toast('打開：' + p.name); }
+    if (d && confirm('確定要刪除這一篇嗎？')) { store(K_POSTS, posts.filter(p => String(p.id) !== d)); showList(); }
+  };
+
+  // 新的一篇
+  $('btnNew').onclick = () => { if (confirm('清空畫面，開始新的一篇？（存過的不會不見）')) { cur = blank(); fill(); } };
+
+  fill();
+</script>
+
+</body>
+</html>
