@@ -43,6 +43,7 @@
   .pic-select.selected { border-color: var(--main); }
   .pic-select img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .pic-delete { position: absolute; right: -6px; top: -6px; width: 24px; height: 24px; padding: 0; border-radius: 50%; background: #fff; color: var(--text); border: 1px solid var(--line); }
+  #storageUsage { white-space: pre-line; }
   #storageUsage.error, #picStatus.error { color: #b42318; }
   .p-img { position: relative; overflow: hidden; }
   .p-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -267,11 +268,11 @@
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
   const failedWrites = new Set();
   const pictureSources = new Map(), durablePictures = new Set();
-  let pictureDBPromise, pictureBytes = 0, pictureStorageError = '';
+  let pictureDBPromise, pictureCount = 0, pictureStorageError = '', usageVersion = 0;
   function pictureDB() {
     if (!pictureDBPromise) pictureDBPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open('my-studio-images', 1);
-      request.onupgradeneeded = () => request.result.createObjectStore('images', { keyPath: 'id' });
+      const request = indexedDB.open('studio-images', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('imgs');
       request.onsuccess = () => {
         const db = request.result;
         db.onversionchange = () => { db.close(); pictureDBPromise = null; };
@@ -285,7 +286,7 @@
   async function imageTransaction(mode, action) {
     const db = await pictureDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction('images', mode), images = tx.objectStore('images');
+      const tx = db.transaction('imgs', mode), images = tx.objectStore('imgs');
       let result;
       tx.oncomplete = () => resolve(result);
       tx.onabort = () => reject(tx.error || new Error('圖片儲存中斷'));
@@ -296,29 +297,75 @@
   async function pictureRecord(src) {
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(src));
     const id = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-    const bytes = Uint8Array.from(atob(src.slice(src.indexOf(',') + 1)), c => c.charCodeAt(0));
-    return { id, blob: new Blob([bytes], { type: 'image/jpeg' }) };
+    return { id, src };
   }
-  function readPictureBlob(blob) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader(); reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob);
-    });
-  }
-  async function refreshPictureBytes() {
-    let bytes = 0;
+  async function refreshPictureUsage() {
+    let count = 0;
     await imageTransaction('readonly', images => {
-      const request = images.openCursor();
-      request.onsuccess = () => { const cursor = request.result; if (cursor) { bytes += cursor.value.blob.size; cursor.continue(); } };
+      const request = images.count();
+      request.onsuccess = () => { count = request.result; };
     });
-    pictureBytes = bytes; storageUsage();
+    pictureCount = count; storageUsage();
+  }
+  async function loadPictureSources(ids) {
+    const loaded = new Map();
+    await imageTransaction('readonly', images => {
+      for (const id of ids) {
+        const request = images.get(id);
+        request.onsuccess = () => { if (typeof request.result === 'string') loaded.set(id, request.result); };
+      }
+    });
+    // Preserve references created by the earlier Blob-based image warehouse.
+    const missing = [...ids].filter(id => !loaded.has(id));
+    if (missing.length && indexedDB.databases && (await indexedDB.databases()).some(db => db.name === 'my-studio-images')) {
+      const legacy = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('my-studio-images');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        if (legacy.objectStoreNames.contains('images')) {
+          const blobs = await new Promise((resolve, reject) => {
+            const tx = legacy.transaction('images'), found = new Map();
+            for (const id of missing) {
+              const request = tx.objectStore('images').get(id);
+              request.onsuccess = () => { if (request.result?.blob) found.set(id, request.result.blob); };
+            }
+            tx.oncomplete = () => resolve(found);
+            tx.onabort = () => reject(tx.error);
+          });
+          for (const [id, blob] of blobs) {
+            const src = await new Promise((resolve, reject) => {
+              const reader = new FileReader(); reader.onload = () => resolve(reader.result);
+              reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob);
+            });
+            loaded.set(id, src);
+          }
+          await imageTransaction('readwrite', images => {
+            for (const id of missing) if (loaded.has(id)) images.put(loaded.get(id), id);
+          });
+        }
+      } finally { legacy.close(); }
+    }
+    for (const [id, src] of loaded) { pictureSources.set(id, src); durablePictures.add(id); }
+    if ([...ids].some(id => !loaded.has(id))) throw new Error('部分圖片無法讀取，原貼文與圖片編號已保留');
+  }
+  async function removeUnusedPicture(id) {
+    // Do not delete if storage is unreadable or any current/saved reference still exists.
+    const posts = JSON.parse(localStorage.getItem(K_POSTS) || '[]');
+    const draft = JSON.parse(localStorage.getItem(K_DRAFT) || 'null');
+    if (!Array.isArray(posts)) throw new Error('貼文資料格式無法讀取');
+    if ([cur, draft, ...posts].some(post => post?.pictures?.some(pic => pic.id === id || pic.src))) return;
+    await imageTransaction('readwrite', images => images.delete(id));
+    pictureSources.delete(id); durablePictures.delete(id);
+    await refreshPictureUsage();
   }
   async function persistPicture(src) {
     const record = await pictureRecord(src);
-    await imageTransaction('readwrite', images => images.put(record));
+    await imageTransaction('readwrite', images => images.put(record.src, record.id));
     durablePictures.add(record.id); pictureSources.set(record.id, src);
     pictureStorageError = '';
-    await refreshPictureBytes();
+    await refreshPictureUsage();
     return { id: record.id };
   }
   // Migrate only after all image writes commit. Failed writes leave the original localStorage record intact.
@@ -334,7 +381,7 @@
         if (!draft || !Array.isArray(draft.pictures)) continue;
         const pictures = [];
         for (const old of draft.pictures) {
-          if (typeof old?.src === 'string' && /^data:image\/jpeg;base64,/.test(old.src)) {
+          if (typeof old?.src === 'string' && /^data:image\//.test(old.src)) {
             let record = sources.get(old.src);
             if (!record) { record = await pictureRecord(old.src); sources.set(old.src, record); records.set(record.id, record); }
             if (draft.mainPicture === old.id) draft.mainPicture = record.id;
@@ -345,26 +392,21 @@
         draft.pictures = pictures;
       }
     }
-    const loaded = new Map();
     await imageTransaction('readwrite', images => {
-      for (const record of records.values()) images.put(record);
-      for (const id of existing) {
-        const request = images.get(id);
-        request.onsuccess = () => { if (request.result) loaded.set(id, request.result); };
-      }
+      for (const record of records.values()) images.put(record.src, record.id);
     });
     for (const [src, record] of sources) { durablePictures.add(record.id); pictureSources.set(record.id, src); }
-    for (const [id, record] of loaded) { pictureSources.set(id, await readPictureBlob(record.blob)); durablePictures.add(id); }
-    if ([...existing].some(id => !durablePictures.has(id))) throw new Error('部分圖片無法讀取，原貼文與圖片編號已保留');
+    await loadPictureSources(existing);
     for (const entry of snapshots) {
       if (entry.raw && localStorage.getItem(entry.key) === entry.raw) {
         if (!store(entry.key, entry.value)) throw new Error('貼文索引尚未存入，原資料已保留');
       }
       else if (entry.raw) throw new Error('其他分頁正在更新貼文，請重新整理再搬移');
     }
-    pictureStorageError = ''; await refreshPictureBytes();
+    pictureStorageError = ''; await refreshPictureUsage();
   }
-  function storageUsage() {
+  async function storageUsage() {
+    const version = ++usageVersion;
     const el = $('storageUsage');
     if (!el) return;
     try {
@@ -374,7 +416,16 @@
         bytes += (key.length + localStorage.getItem(key).length) * 2;
       }
       el.classList.toggle('error', !!pictureStorageError || failedWrites.size > 0);
-      el.textContent = pictureStorageError || (failedWrites.size ? '⚠️ 抽屜滿了，剛剛的沒存到！' : `瀏覽器的抽屜：文字 ${(bytes / 1024 / 1024).toFixed(2)} MB｜圖片 ${(pictureBytes / 1024 / 1024).toFixed(2)} MB（IndexedDB）`);
+      const error = pictureStorageError || (failedWrites.size ? '⚠️ 抽屜滿了，剛剛的沒存到！' : '');
+      const drawer = `瀏覽器的抽屜：已用 ${(bytes / 1024 / 1024).toFixed(2)} MB`;
+      el.textContent = error || `${drawer}\n圖片倉庫：${pictureCount} 張，這個網站約用 計算中 MB`;
+      if (error) return;
+      let used = '無法估算';
+      try {
+        const estimate = await navigator.storage.estimate();
+        if (Number.isFinite(estimate.usage)) used = (estimate.usage / 1024 / 1024).toFixed(2);
+      } catch (error) { /* Some browser modes do not expose a storage estimate. */ }
+      if (version === usageVersion) el.textContent = `${drawer}\n圖片倉庫：${pictureCount} 張，這個網站約用 ${used} MB`;
     } catch (e) { el.classList.add('error'); el.textContent = '⚠️ 抽屜滿了，剛剛的沒存到！'; }
   }
   const store = (k, v) => {
@@ -445,12 +496,16 @@
       if (rejected.length) { $('picStatus').classList.add('error'); $('picStatus').textContent = `無法讀取圖片：${rejected.join('、')}`; }
     } finally { $('btnUpload').disabled = false; }
   };
-  $('picThumbs').onclick = e => {
+  $('picThumbs').onclick = async e => {
     const button = e.target.closest('button');
     if (!button) return;
     if (button.dataset.remove) cur.pictures = cur.pictures.filter(p => p.id !== button.dataset.remove);
     else if (button.dataset.pic) cur.mainPicture = button.dataset.pic;
-    renderPictures(); preview(); store(K_DRAFT, cur);
+    renderPictures(); preview();
+    if (store(K_DRAFT, cur) && button.dataset.remove) {
+      try { await removeUnusedPicture(button.dataset.remove); }
+      catch (error) { pictureStorageError = '⚠️ 縮圖已移除，圖片倉庫清理失敗。'; storageUsage(); }
+    }
   };
 
   // 素材卡表單
@@ -1130,10 +1185,13 @@ ${card}`;
       : '<p class="small">還沒有存過的貼文。</p>';
   }
   $('btnList').onclick = () => { showList(); open('mList'); };
-  $('list').onclick = e => {
-    const posts = load(K_POSTS, []);
+  $('list').onclick = async e => {
+    let posts = load(K_POSTS, []);
     const o = e.target.dataset.open, d = e.target.dataset.del;
-    if (o) { const p = posts.find(p => String(p.id) === o); cur = { id: p.id, fields: { ...p.fields }, posts: { ...p.posts }, tab: PLATFORMS[0], chats: p.chats || {}, previousPosts: p.previousPosts || null, pictures: (p.pictures || []).map(pic => ({ ...pic })), mainPicture: p.mainPicture || null }; fill(); $('mList').classList.remove('show'); toast('打開：' + p.name); }
+    if (o) {
+      try { await migratePictures(); posts = load(K_POSTS, []); }
+      catch (error) { pictureStorageError = '⚠️ 圖片尚未搬移完成，原資料已保留。' + error.message; storageUsage(); }
+      const p = posts.find(p => String(p.id) === o); cur = { id: p.id, fields: { ...p.fields }, posts: { ...p.posts }, tab: PLATFORMS[0], chats: p.chats || {}, previousPosts: p.previousPosts || null, pictures: (p.pictures || []).map(pic => ({ ...pic })), mainPicture: p.mainPicture || null }; fill(); $('mList').classList.remove('show'); toast('打開：' + p.name); }
     if (d && confirm('確定要刪除這一篇嗎？')) { store(K_POSTS, posts.filter(p => String(p.id) !== d)); showList(); }
   };
 
