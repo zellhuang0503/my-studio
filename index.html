@@ -49,6 +49,12 @@
   .line-pictures { min-width: 0; flex: 1; }
   .line-pictures .p-img { width: 100%; max-width: 230px; border-radius: 16px; margin-bottom: 8px; }
   .th > div:last-child { min-width: 0; flex: 1; }
+  .ig-carousel { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .ig-carousel::-webkit-scrollbar { display: none; }
+  .ig-slide { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; }
+  .ig-dots { display: flex; justify-content: center; gap: 6px; padding: 10px 0 2px; }
+  .ig-dots button { width: 7px; height: 7px; padding: 0; border-radius: 50%; background: var(--line); }
+  .ig-dots button[aria-current="true"] { background: var(--main); }
 
   /* 平台分頁 */
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -260,6 +266,104 @@
   const K_DRAFT = 'demo-draft', K_POSTS = 'demo-posts', K_SET = 'demo-settings';
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
   const failedWrites = new Set();
+  const pictureSources = new Map(), durablePictures = new Set();
+  let pictureDBPromise, pictureBytes = 0, pictureStorageError = '';
+  function pictureDB() {
+    if (!pictureDBPromise) pictureDBPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open('my-studio-images', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('images', { keyPath: 'id' });
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => { db.close(); pictureDBPromise = null; };
+        resolve(db);
+      };
+      request.onerror = () => { pictureDBPromise = null; reject(request.error); };
+      request.onblocked = () => { pictureStorageError = '⚠️ 圖片儲存尚未就緒，請關閉其他工作台分頁後重試。'; storageUsage(); };
+    });
+    return pictureDBPromise;
+  }
+  async function imageTransaction(mode, action) {
+    const db = await pictureDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('images', mode), images = tx.objectStore('images');
+      let result;
+      tx.oncomplete = () => resolve(result);
+      tx.onabort = () => reject(tx.error || new Error('圖片儲存中斷'));
+      tx.onerror = () => {};
+      try { result = action(images); } catch (error) { tx.abort(); reject(error); }
+    });
+  }
+  async function pictureRecord(src) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(src));
+    const id = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const bytes = Uint8Array.from(atob(src.slice(src.indexOf(',') + 1)), c => c.charCodeAt(0));
+    return { id, blob: new Blob([bytes], { type: 'image/jpeg' }) };
+  }
+  function readPictureBlob(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob);
+    });
+  }
+  async function refreshPictureBytes() {
+    let bytes = 0;
+    await imageTransaction('readonly', images => {
+      const request = images.openCursor();
+      request.onsuccess = () => { const cursor = request.result; if (cursor) { bytes += cursor.value.blob.size; cursor.continue(); } };
+    });
+    pictureBytes = bytes; storageUsage();
+  }
+  async function persistPicture(src) {
+    const record = await pictureRecord(src);
+    await imageTransaction('readwrite', images => images.put(record));
+    durablePictures.add(record.id); pictureSources.set(record.id, src);
+    pictureStorageError = '';
+    await refreshPictureBytes();
+    return { id: record.id };
+  }
+  // Migrate only after all image writes commit. Failed writes leave the original localStorage record intact.
+  async function migratePictures() {
+    const snapshots = [K_DRAFT, K_POSTS].map(key => ({ key, raw: localStorage.getItem(key) }));
+    const records = new Map(), sources = new Map(), existing = new Set();
+    for (const entry of snapshots) {
+      if (!entry.raw) continue;
+      entry.value = JSON.parse(entry.raw);
+      const drafts = entry.key === K_POSTS ? entry.value : [entry.value];
+      if (!Array.isArray(drafts)) throw new Error('貼文資料格式無法搬移');
+      for (const draft of drafts) {
+        if (!draft || !Array.isArray(draft.pictures)) continue;
+        const pictures = [];
+        for (const old of draft.pictures) {
+          if (typeof old?.src === 'string' && /^data:image\/jpeg;base64,/.test(old.src)) {
+            let record = sources.get(old.src);
+            if (!record) { record = await pictureRecord(old.src); sources.set(old.src, record); records.set(record.id, record); }
+            if (draft.mainPicture === old.id) draft.mainPicture = record.id;
+            pictures.push({ id: record.id });
+          } else if (typeof old?.id === 'string') { pictures.push({ id: old.id }); existing.add(old.id); }
+          else throw new Error('圖片資料無法搬移');
+        }
+        draft.pictures = pictures;
+      }
+    }
+    const loaded = new Map();
+    await imageTransaction('readwrite', images => {
+      for (const record of records.values()) images.put(record);
+      for (const id of existing) {
+        const request = images.get(id);
+        request.onsuccess = () => { if (request.result) loaded.set(id, request.result); };
+      }
+    });
+    for (const [src, record] of sources) { durablePictures.add(record.id); pictureSources.set(record.id, src); }
+    for (const [id, record] of loaded) { pictureSources.set(id, await readPictureBlob(record.blob)); durablePictures.add(id); }
+    if ([...existing].some(id => !durablePictures.has(id))) throw new Error('部分圖片無法讀取，原貼文與圖片編號已保留');
+    for (const entry of snapshots) {
+      if (entry.raw && localStorage.getItem(entry.key) === entry.raw) {
+        if (!store(entry.key, entry.value)) throw new Error('貼文索引尚未存入，原資料已保留');
+      }
+      else if (entry.raw) throw new Error('其他分頁正在更新貼文，請重新整理再搬移');
+    }
+    pictureStorageError = ''; await refreshPictureBytes();
+  }
   function storageUsage() {
     const el = $('storageUsage');
     if (!el) return;
@@ -269,12 +373,15 @@
         const key = localStorage.key(i);
         bytes += (key.length + localStorage.getItem(key).length) * 2;
       }
-      el.classList.toggle('error', failedWrites.size > 0);
-      el.textContent = failedWrites.size ? '⚠️ 抽屜滿了，剛剛的沒存到！' : `瀏覽器的抽屜（localStorage）：已用 ${(bytes / 1024 / 1024).toFixed(2)} MB`;
+      el.classList.toggle('error', !!pictureStorageError || failedWrites.size > 0);
+      el.textContent = pictureStorageError || (failedWrites.size ? '⚠️ 抽屜滿了，剛剛的沒存到！' : `瀏覽器的抽屜：文字 ${(bytes / 1024 / 1024).toFixed(2)} MB｜圖片 ${(pictureBytes / 1024 / 1024).toFixed(2)} MB（IndexedDB）`);
     } catch (e) { el.classList.add('error'); el.textContent = '⚠️ 抽屜滿了，剛剛的沒存到！'; }
   }
   const store = (k, v) => {
-    try { localStorage.setItem(k, JSON.stringify(v)); failedWrites.delete(k); storageUsage(); return true; }
+    try {
+      const json = JSON.stringify(v, (key, value) => (k === K_DRAFT || k === K_POSTS) && key === 'pictures' && Array.isArray(value) ? value.map(p => durablePictures.has(p.id) ? { id: p.id } : p) : value);
+      localStorage.setItem(k, json); failedWrites.delete(k); storageUsage(); return true;
+    }
     catch (e) { failedWrites.add(k); storageUsage(); return false; }
   };
   const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -291,12 +398,12 @@
   if (!PLATFORMS.includes(cur.tab)) cur.tab = PLATFORMS[0];
 
   function normalizePictures(draft) {
-    draft.pictures = Array.isArray(draft.pictures) ? draft.pictures.filter(p => p && typeof p.id === 'string' && typeof p.src === 'string' && /^data:image\/jpeg;base64,/.test(p.src)) : [];
+    draft.pictures = Array.isArray(draft.pictures) ? draft.pictures.filter(p => p && typeof p.id === 'string') : [];
     if (!draft.pictures.some(p => p.id === draft.mainPicture)) draft.mainPicture = draft.pictures[0]?.id || null;
   }
   function renderPictures() {
     normalizePictures(cur);
-    $('picThumbs').innerHTML = cur.pictures.map((p, i) => `<div class="pic-thumb"><button type="button" class="pic-select${p.id === cur.mainPicture ? ' selected' : ''}" data-pic="${esc(p.id)}" aria-label="選第 ${i + 1} 張為主圖" aria-pressed="${p.id === cur.mainPicture}"><img src="${esc(p.src)}" alt="第 ${i + 1} 張圖片"></button><button type="button" class="pic-delete" data-remove="${esc(p.id)}" aria-label="刪除第 ${i + 1} 張圖片">×</button></div>`).join('');
+    $('picThumbs').innerHTML = cur.pictures.map((p, i) => `<div class="pic-thumb"><button type="button" class="pic-select${p.id === cur.mainPicture ? ' selected' : ''}" data-pic="${esc(p.id)}" aria-label="選第 ${i + 1} 張為主圖" aria-pressed="${p.id === cur.mainPicture}">${pictureSources.get(p.id) || p.src ? `<img src="${esc(pictureSources.get(p.id) || p.src)}" alt="第 ${i + 1} 張圖片">` : '圖片無法讀取'}</button><button type="button" class="pic-delete" data-remove="${esc(p.id)}" aria-label="刪除第 ${i + 1} 張圖片">×</button></div>`).join('');
     storageUsage();
   }
   async function shrinkPicture(file) {
@@ -325,8 +432,12 @@
     try {
       for (const file of files) {
         try {
-          const pic = await shrinkPicture(file);
-          normalizePictures(draft); draft.pictures.push(pic);
+          const resized = await shrinkPicture(file);
+          let pic;
+          try { pic = await persistPicture(resized.src); }
+          catch (error) { pictureStorageError = '⚠️ 圖片沒有存到，請確認瀏覽器儲存空間與權限後重試。'; storageUsage(); throw error; }
+          normalizePictures(draft);
+          if (!draft.pictures.some(p => p.id === pic.id)) draft.pictures.push(pic);
           if (!draft.mainPicture) draft.mainPicture = pic.id;
           if (cur === draft) { renderPictures(); preview(); store(K_DRAFT, draft); }
         } catch (error) { rejected.push(file.name); }
@@ -373,16 +484,22 @@
     const t = topic() ? esc(topic()) : '<span class="empty">（素材卡第一格）</span>';
     const name = esc(BRAND.name), acc = esc(BRAND.account);
     normalizePictures(cur);
-    const mainPic = cur.pictures.find(p => p.id === cur.mainPicture);
+    const selectedPic = cur.pictures.find(p => p.id === cur.mainPicture);
+    const mainPic = selectedPic && (pictureSources.get(selectedPic.id) || selectedPic.src);
     const [width, height] = PIC_SIZE[cur.tab] || PIC_SIZE.FB;
-    const picture = `<div class="p-img" style="aspect-ratio:${width}/${height}">${mainPic ? `<img src="${esc(mainPic.src)}" alt="這篇的主圖">` : `<span>${t}</span>`}</div>`;
+    const picture = `<div class="p-img" style="aspect-ratio:${width}/${height}">${mainPic ? `<img src="${esc(mainPic)}" alt="這篇的主圖">` : `<span>${t}</span>`}</div>`;
+    const igPictures = cur.pictures.slice().sort((a, b) => Number(b.id === cur.mainPicture) - Number(a.id === cur.mainPicture));
+    const igGallery = igPictures.length ? `<div class="ig-carousel" aria-label="這篇的圖片，可左右滑動">${igPictures.map((p, i) => {
+      const src = pictureSources.get(p.id) || p.src;
+      return `<div class="p-img ig-slide" style="aspect-ratio:${PIC_SIZE.IG[0]}/${PIC_SIZE.IG[1]}">${src ? `<img src="${esc(src)}" alt="第 ${i + 1} 張圖片，共 ${igPictures.length} 張">` : '<span>圖片無法讀取</span>'}</div>`;
+    }).join('')}</div>${igPictures.length > 1 ? `<div class="ig-dots" aria-label="圖片頁碼">${igPictures.map((p, i) => `<button type="button" data-slide="${i}" aria-label="第 ${i + 1} 張，共 ${igPictures.length} 張" aria-current="${i === 0}"></button>`).join('')}</div>` : ''}` : picture;
     const views = {
       FB: `<div class="p-head"><div class="avatar"></div><div><b>${name}</b><div class="small">剛剛 · 🌐</div></div></div>
            <div class="p-text">${text}</div>
            ${picture}
            <div class="fb-bar"><span>👍 讚</span><span>💬 留言</span><span>↗ 分享</span></div>`,
       IG: `<div class="p-head"><div class="avatar"></div><b>${acc}</b></div>
-           ${picture}
+           ${igGallery}
            <div class="ig-bar">♡ 💬 ➤</div>
            <div class="p-text"><b>${acc}</b> ${text}</div>`,
       LINE: `<div class="line-bg"><div class="line-top">${name}</div>
@@ -391,6 +508,15 @@
            <div class="p-text">${text}</div>${mainPic ? picture : ''}<div class="small">♡ 💬 🔁 ➤</div></div></div>`
     };
     $('phone').innerHTML = views[cur.tab] || views.FB;
+    const gallery = $('phone').querySelector('.ig-carousel');
+    if (gallery) {
+      const dots = [...$('phone').querySelectorAll('.ig-dots button')];
+      gallery.onscroll = () => {
+        const index = Math.round(gallery.scrollLeft / gallery.clientWidth);
+        dots.forEach((dot, i) => dot.setAttribute('aria-current', String(i === index)));
+      };
+      dots.forEach((dot, i) => dot.onclick = () => gallery.scrollTo({ left: gallery.clientWidth * i, behavior: 'smooth' }));
+    }
     $('count').textContent = raw.length + ' 字';
   }
 
@@ -1014,7 +1140,19 @@ ${card}`;
   // 新的一篇
   $('btnNew').onclick = () => { if (confirm('清空畫面，開始新的一篇？（存過的不會不見）')) { cur = blank(); fill(); } };
 
-  fill();
+  async function initializePictures() {
+    const controls = [...document.querySelectorAll('header button, main button, main input, main textarea')].map(el => [el, el.disabled]);
+    controls.forEach(([el]) => el.disabled = true);
+    $('picStatus').textContent = '正在讀取與搬移圖片…';
+    try { await migratePictures(); cur = load(K_DRAFT, blank()); }
+    catch (error) { cur = load(K_DRAFT, cur); pictureStorageError = '⚠️ 圖片尚未搬移完成，原資料已保留。' + error.message; storageUsage(); }
+    finally {
+      controls.forEach(([el, disabled]) => el.disabled = disabled);
+      $('picStatus').textContent = '';
+      fill();
+    }
+  }
+  initializePictures();
 </script>
 
 </body>
