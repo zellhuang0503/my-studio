@@ -18,6 +18,9 @@
   * { box-sizing: border-box; }
   body { margin: 0; font-family: var(--font); background: var(--bg); color: var(--text); }
   button { font: inherit; font-size: 14px; border: 0; border-radius: calc(var(--radius) / 2); padding: 7px 14px; cursor: pointer; background: var(--main); color: #fff; }
+  #btnAI:disabled { background: #999; cursor: wait; }
+  #mSet select { width: 100%; padding: 8px; font: inherit; }
+  #aiStatus.error { color: #b42318; }
   button.light { background: #fff; color: var(--main); border: 1px solid var(--line); }
 
   header { background: var(--main); color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -33,6 +36,19 @@
   input, textarea { width: 100%; padding: 8px 10px; font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: calc(var(--radius) / 2); background: #fff; color: var(--text); }
   textarea { min-height: 70px; resize: vertical; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  #pictures { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 16px; }
+  #picThumbs { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .pic-thumb { position: relative; width: 76px; height: 76px; }
+  .pic-select { width: 100%; height: 100%; padding: 0; background: #fff; border: 3px solid var(--line); overflow: hidden; }
+  .pic-select.selected { border-color: var(--main); }
+  .pic-select img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .pic-delete { position: absolute; right: -6px; top: -6px; width: 24px; height: 24px; padding: 0; border-radius: 50%; background: #fff; color: var(--text); border: 1px solid var(--line); }
+  #storageUsage.error, #picStatus.error { color: #b42318; }
+  .p-img { position: relative; overflow: hidden; }
+  .p-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .line-pictures { min-width: 0; flex: 1; }
+  .line-pictures .p-img { width: 100%; max-width: 230px; border-radius: 16px; margin-bottom: 8px; }
+  .th > div:last-child { min-width: 0; flex: 1; }
 
   /* 平台分頁 */
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -40,6 +56,14 @@
   .tabs button.on { background: var(--main); color: #fff; }
   #post { min-height: 340px; line-height: 1.7; }
   .count { font-size: 13px; color: #888; text-align: right; margin-top: 4px; }
+
+  #helper { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+  #helperLog { max-height: 260px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+  #helperLog p { padding: 8px 10px; background: var(--bg); border-radius: var(--radius); }
+  #helperForm { display: flex; gap: 8px; margin-top: 10px; }
+  #helperInput { flex: 1; min-width: 0; }
+  #helper button:disabled, #btnUndo:disabled { opacity: .5; cursor: default; }
+  #helperStatus.error { color: #b42318; }
 
   /* 手機框 */
   .phone { width: 320px; height: 620px; border: 10px solid #111; border-radius: 36px; background: #fff; overflow-y: auto; align-self: start; font-size: 14px; }
@@ -66,6 +90,18 @@
   .modal.show { display: flex; }
   .modal .box { width: min(760px, 100%); max-height: 90vh; overflow: auto; }
   .modal textarea { min-height: 160px; }
+  #checkCandidates .check-line, #checkReport .check-line { white-space: pre-wrap; overflow-wrap: anywhere; padding: 4px 8px; min-height: 1em; }
+  #checkFixStatus.error { color: #b42318; }
+  #mCheck button:disabled { opacity: .5; cursor: default; }
+  .check-fireworks { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 30; }
+  .check-celebration { position: absolute; top: max(24px, 12vh); left: 50%; transform: translateX(-50%); width: min(420px, calc(100% - 32px)); box-sizing: border-box; padding: 20px 24px; border: 2px solid #d8a135; border-radius: 18px; background: #fffcf2; color: #5a381c; box-shadow: 0 8px 40px #5a381c40; text-align: center; }
+  .check-celebration strong { display: block; font-size: 24px; margin-bottom: 8px; }
+  .check-celebration p { margin: 0; font-size: 16px; line-height: 1.7; white-space: pre-line; }
+  .check-spark { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--spark-color); box-shadow: 0 0 8px var(--spark-color); animation: check-burst 1.7s ease-out both; }
+  @keyframes check-burst { 0% { transform: translate(0, 0) scale(.3); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(var(--spark-x), var(--spark-y)) scale(.2); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .check-spark { animation: none; display: none; } }
+  #checkReport .check-fail { background: #fee2e2; color: #991b1b; }
+  #checkReport .check-warning { background: #fef3c7; color: #92400e; }
   .item { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 8px 0; }
   .item div { flex: 1; }
   #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 14px; display: none; z-index: 20; }
@@ -90,6 +126,17 @@
       <button class="light" id="btnPaste">📥 貼回 AI 寫好的</button>
       <button class="light" id="btnSave">💾 存檔</button>
     </div>
+    <div class="actions"><button id="btnAI">✨ 讓 AI 寫</button></div>
+    <div id="aiStatus" class="small" role="status" style="white-space:pre-wrap"></div>
+    <div id="aiUsage" class="small" role="status"></div>
+    <section id="pictures" aria-labelledby="picturesTitle">
+      <h2 id="picturesTitle">🖼 這篇的圖</h2>
+      <button type="button" id="btnUpload">📤 上傳</button>
+      <input id="picFiles" type="file" accept="image/*" multiple hidden>
+      <div id="picThumbs"></div>
+      <div id="storageUsage" class="small" role="status"></div>
+      <div id="picStatus" class="small" role="status"></div>
+    </section>
   </section>
 
   <!-- 中間：平台分頁＋貼文框 -->
@@ -97,16 +144,67 @@
     <div class="tabs" id="tabs"></div>
     <textarea id="post" placeholder="把這個平台的貼文貼在這裡…"></textarea>
     <div class="count" id="count">0 字</div>
-    <div class="actions"><button class="light" id="btnCopy">📋 複製這一篇</button></div>
+    <div class="actions"><button class="light" id="btnCopy">📋 複製這一篇</button><button class="light" id="btnUndo" disabled>↩ 復原上一版</button></div>
+    <div class="actions"><button class="light" id="btnCheck">🔍 檢查官</button></div>
+    <div id="checkStatus" class="small" role="status" style="white-space:pre-wrap"></div>
+    <div id="helper">
+      <h2>💬 AI 小幫手</h2>
+      <div id="helperLog" role="log" aria-label="目前平台的對話紀錄"></div>
+      <div class="actions" id="helperShortcuts">
+        <button type="button" class="light" data-edit="短一點">短一點</button>
+        <button type="button" class="light" data-edit="換開頭">換開頭</button>
+        <button type="button" class="light" data-edit="少一點 emoji">少一點 emoji</button>
+        <button type="button" class="light" data-edit="更像範例">更像範例</button>
+      </div>
+      <form id="helperForm">
+        <input id="helperInput" aria-label="修改要求" placeholder="想怎麼改這篇貼文？" autocomplete="off">
+        <button id="helperSend" type="submit">送出</button>
+      </form>
+      <div id="helperStatus" class="small" role="status"></div>
+    </div>
   </section>
 
   <!-- 右邊：手機預覽 -->
   <section class="phone" id="phone"></section>
 </main>
 
+<!-- 檢查官報告 -->
+<div class="modal" id="mCheck" role="dialog" aria-modal="true" aria-labelledby="checkTitle"><div class="box">
+  <h2 id="checkTitle">🔍 檢查官報告</h2>
+  <div id="checkReport"></div>
+  <div id="checkQuestions"></div>
+  <details id="checkCandidatePanel"><summary>查看各平台最新修訂稿（通過檢查後自動匯入）</summary><div id="checkCandidates"></div></details>
+  <div id="checkFixStatus" class="small" role="status" style="white-space:pre-wrap"></div>
+  <div class="actions"><button id="btnCheckFix" disabled>✨ 一鍵修改</button><button id="btnCheckReply" disabled>💬 依我的回覆修改</button><button class="light" id="btnCheckAgain">🔍 重新檢查</button><button class="light" data-close>關閉</button></div>
+</div></div>
+
 <!-- 設定 -->
 <div class="modal" id="mSet"><div class="box">
   <h2>⚙ 設定</h2>
+  <h3>第一組 OpenRouter</h3>
+  <label for="setAIKey">OpenRouter 金鑰</label>
+  <input id="setAIKey" type="password" autocomplete="off">
+  <label for="setModel">模型</label>
+  <select id="setModel">
+    <optgroup label="DeepSeek">
+      <option>deepseek/deepseek-v4.1-flash</option><option>deepseek/deepseek-v4-pro</option><option>deepseek/deepseek-v3.2</option>
+    </optgroup>
+    <optgroup label="Kimi">
+      <option>moonshotai/kimi-k2.6</option><option>moonshotai/kimi-k2.5</option><option>moonshotai/kimi-k3</option>
+    </optgroup>
+    <optgroup label="MiniMax">
+      <option>minimax/minimax-m3</option><option>minimax/minimax-m2.7</option><option>minimax/minimax-m2.5</option>
+    </optgroup>
+  </select>
+  <label for="setCustomModel">或自己打模型名稱</label><input id="setCustomModel">
+  <label for="setEffort">思考</label>
+  <select id="setEffort"><option value="low">少想一點 low</option><option value="medium">多想一點 medium</option><option value="high">想很久 high</option></select>
+  <h3>第二組 Gemini</h3>
+  <label for="setGeminiKey">Gemini 金鑰</label><input id="setGeminiKey" type="password" autocomplete="off">
+  <label for="setGeminiModel">Gemini 模型</label>
+  <select id="setGeminiModel"><option>gemini-3.8-flash</option><option>gemini-3.6-flash</option><option>gemini-3.5-flash-lite</option><option>gemini-3.1-flash-lite</option></select>
+  <label for="setProvider">先用哪一組</label>
+  <select id="setProvider"><option value="auto">先用 OpenRouter 失敗了自動換 Gemini</option><option value="gemini">只用 Gemini</option><option value="openrouter">只用 OpenRouter</option></select>
   <label>品牌規格（把 品牌規格.md 整份貼進來）</label>
   <textarea id="setSpec" style="min-height:260px"></textarea>
   <label>檢查清單（可以不填）</label>
@@ -141,6 +239,8 @@
 <div id="toast"></div>
 
 <script>
+  const PIC_SIZE = { FB: [1080, 1080], IG: [1080, 1350], LINE: [1040, 1040], Threads: [1080, 1350] };
+  const AI_MODEL = 'deepseek/deepseek-v4.1-flash';
   // ===== 我的品牌、平台、欄位都在這裡改 =====
   const BRAND = { name: '小島咖啡', account: 'xiaodao.coffee' };
   const PLATFORMS = ['FB', 'IG', 'LINE'];   // 可以用：FB、IG、LINE、Threads
@@ -159,7 +259,24 @@
   const $ = id => document.getElementById(id);
   const K_DRAFT = 'demo-draft', K_POSTS = 'demo-posts', K_SET = 'demo-settings';
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
-  const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+  const failedWrites = new Set();
+  function storageUsage() {
+    const el = $('storageUsage');
+    if (!el) return;
+    try {
+      let bytes = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        bytes += (key.length + localStorage.getItem(key).length) * 2;
+      }
+      el.classList.toggle('error', failedWrites.size > 0);
+      el.textContent = failedWrites.size ? '⚠️ 抽屜滿了，剛剛的沒存到！' : `瀏覽器的抽屜（localStorage）：已用 ${(bytes / 1024 / 1024).toFixed(2)} MB`;
+    } catch (e) { el.classList.add('error'); el.textContent = '⚠️ 抽屜滿了，剛剛的沒存到！'; }
+  }
+  const store = (k, v) => {
+    try { localStorage.setItem(k, JSON.stringify(v)); failedWrites.delete(k); storageUsage(); return true; }
+    catch (e) { failedWrites.add(k); storageUsage(); return false; }
+  };
   const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const toast = msg => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 1600); };
 
@@ -169,9 +286,61 @@
   document.title = BRAND.name + '｜社群工作台';
   $('brandTitle').textContent = BRAND.name + ' v2｜社群工作台';
 
-  const blank = () => ({ id: null, fields: {}, posts: {}, tab: PLATFORMS[0] });
+  const blank = () => ({ id: null, fields: {}, posts: {}, tab: PLATFORMS[0], chats: {}, previousPosts: null, pictures: [], mainPicture: null });
   let cur = load(K_DRAFT, blank());
   if (!PLATFORMS.includes(cur.tab)) cur.tab = PLATFORMS[0];
+
+  function normalizePictures(draft) {
+    draft.pictures = Array.isArray(draft.pictures) ? draft.pictures.filter(p => p && typeof p.id === 'string' && typeof p.src === 'string' && /^data:image\/jpeg;base64,/.test(p.src)) : [];
+    if (!draft.pictures.some(p => p.id === draft.mainPicture)) draft.mainPicture = draft.pictures[0]?.id || null;
+  }
+  function renderPictures() {
+    normalizePictures(cur);
+    $('picThumbs').innerHTML = cur.pictures.map((p, i) => `<div class="pic-thumb"><button type="button" class="pic-select${p.id === cur.mainPicture ? ' selected' : ''}" data-pic="${esc(p.id)}" aria-label="選第 ${i + 1} 張為主圖" aria-pressed="${p.id === cur.mainPicture}"><img src="${esc(p.src)}" alt="第 ${i + 1} 張圖片"></button><button type="button" class="pic-delete" data-remove="${esc(p.id)}" aria-label="刪除第 ${i + 1} 張圖片">×</button></div>`).join('');
+    storageUsage();
+  }
+  async function shrinkPicture(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const scale = Math.min(1, 1080 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return { id: crypto.randomUUID(), src: canvas.toDataURL('image/jpeg', 0.85) };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  $('btnUpload').onclick = () => $('picFiles').click();
+  $('picFiles').onchange = async e => {
+    const files = Array.from(e.target.files), draft = cur;
+    e.target.value = '';
+    $('btnUpload').disabled = true;
+    $('picStatus').textContent = ''; $('picStatus').classList.remove('error');
+    const rejected = [];
+    try {
+      for (const file of files) {
+        try {
+          const pic = await shrinkPicture(file);
+          normalizePictures(draft); draft.pictures.push(pic);
+          if (!draft.mainPicture) draft.mainPicture = pic.id;
+          if (cur === draft) { renderPictures(); preview(); store(K_DRAFT, draft); }
+        } catch (error) { rejected.push(file.name); }
+      }
+      if (rejected.length) { $('picStatus').classList.add('error'); $('picStatus').textContent = `無法讀取圖片：${rejected.join('、')}`; }
+    } finally { $('btnUpload').disabled = false; }
+  };
+  $('picThumbs').onclick = e => {
+    const button = e.target.closest('button');
+    if (!button) return;
+    if (button.dataset.remove) cur.pictures = cur.pictures.filter(p => p.id !== button.dataset.remove);
+    else if (button.dataset.pic) cur.mainPicture = button.dataset.pic;
+    renderPictures(); preview(); store(K_DRAFT, cur);
+  };
 
   // 素材卡表單
   $('fields').innerHTML = FIELDS.map(f => {
@@ -203,19 +372,23 @@
     const text = raw ? esc(raw) : '<span class="empty">貼文內容會出現在這裡</span>';
     const t = topic() ? esc(topic()) : '<span class="empty">（素材卡第一格）</span>';
     const name = esc(BRAND.name), acc = esc(BRAND.account);
+    normalizePictures(cur);
+    const mainPic = cur.pictures.find(p => p.id === cur.mainPicture);
+    const [width, height] = PIC_SIZE[cur.tab] || PIC_SIZE.FB;
+    const picture = `<div class="p-img" style="aspect-ratio:${width}/${height}">${mainPic ? `<img src="${esc(mainPic.src)}" alt="這篇的主圖">` : `<span>${t}</span>`}</div>`;
     const views = {
       FB: `<div class="p-head"><div class="avatar"></div><div><b>${name}</b><div class="small">剛剛 · 🌐</div></div></div>
            <div class="p-text">${text}</div>
-           <div class="p-img wide"><span>${t}</span></div>
+           ${picture}
            <div class="fb-bar"><span>👍 讚</span><span>💬 留言</span><span>↗ 分享</span></div>`,
       IG: `<div class="p-head"><div class="avatar"></div><b>${acc}</b></div>
-           <div class="p-img square"><span>${t}</span></div>
+           ${picture}
            <div class="ig-bar">♡ 💬 ➤</div>
            <div class="p-text"><b>${acc}</b> ${text}</div>`,
       LINE: `<div class="line-bg"><div class="line-top">${name}</div>
-           <div class="line-row"><div class="avatar"></div><div class="bubble">${text}</div></div></div>`,
+           <div class="line-row"><div class="avatar"></div><div class="line-pictures">${mainPic ? picture : ''}<div class="bubble">${text}</div></div></div></div>`,
       Threads: `<div class="th"><div class="avatar"></div><div><b>${acc}</b> <span class="small">剛剛</span>
-           <div class="p-text">${text}</div><div class="small">♡ 💬 🔁 ➤</div></div></div>`
+           <div class="p-text">${text}</div>${mainPic ? picture : ''}<div class="small">♡ 💬 🔁 ➤</div></div></div>`
     };
     $('phone').innerHTML = views[cur.tab] || views.FB;
     $('count').textContent = raw.length + ' 字';
@@ -227,6 +400,8 @@
     $('post').value = cur.posts[cur.tab] || '';
     document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.p === cur.tab));
     preview();
+    renderHelper();
+    renderPictures();
     store(K_DRAFT, cur);
   }
 
@@ -245,8 +420,19 @@
   }
 
   // 設定
-  $('btnSet').onclick = () => { const s = load(K_SET, {}); $('setSpec').value = s.spec || ''; $('setCheck').value = s.check || ''; open('mSet'); };
-  $('btnSetSave').onclick = () => { store(K_SET, { spec: $('setSpec').value, check: $('setCheck').value }); $('mSet').classList.remove('show'); toast('設定存好了'); };
+  const AI_SETTINGS = { setAIKey: ['aiKey', ''], setModel: ['model', AI_MODEL], setCustomModel: ['customModel', ''], setEffort: ['effort', 'low'], setGeminiKey: ['geminiKey', ''], setGeminiModel: ['geminiModel', 'gemini-3.8-flash'], setProvider: ['provider', 'auto'], setSpec: ['spec', ''], setCheck: ['check', ''] };
+  $('btnSet').onclick = () => {
+    const s = load(K_SET, {});
+    Object.entries(AI_SETTINGS).forEach(([id, [key, fallback]]) => $(id).value = s[key] || fallback);
+    open('mSet');
+  };
+  $('btnSetSave').onclick = () => {
+    const s = load(K_SET, {});
+    Object.entries(AI_SETTINGS).forEach(([id, [key]]) => s[key] = $(id).value.trim());
+    if (!store(K_SET, s)) return;
+    $('setAIKey').value = ''; $('setGeminiKey').value = '';
+    $('mSet').classList.remove('show'); toast('設定存好了');
+  };
 
   // 組好指令
   function buildPrompt() {
@@ -261,6 +447,7 @@
 你是「${BRAND.name}」的小編。請照下面的品牌規格，用素材卡的內容，寫 ${plats} 的貼文，每個平台一篇。
 
 【規則】
+- 一律用台灣的繁體中文和台灣用語。不要出現簡體字，也不要用大陸用語（例如：視頻→影片、質量→品質、優化→改善、信息→訊息、網絡→網路、用戶→客人或使用者）。
 - 素材卡上沒有的事，不要寫。
 - 「只能在某個平台說的」，只寫在那個平台。
 - 「先不要講的」，每一篇都不能寫。
@@ -284,8 +471,7 @@ ${card}`;
 
   // 貼回：照【FB】【IG】…分到各分頁
   $('btnPaste').onclick = () => { $('pasteText').value = ''; $('pasteAsk').textContent = ''; open('mPaste'); };
-  $('btnPasteGo').onclick = () => {
-    const txt = $('pasteText').value;
+  function applyAIText(txt) {
     const names = PLATFORMS.concat(['要問我的']);
     const re = new RegExp('【(' + names.join('|') + ')】', 'g');
     const out = {};
@@ -293,11 +479,504 @@ ${card}`;
     while ((m = re.exec(txt))) { if (last) out[last] = txt.slice(from, m.index).trim(); last = m[1]; from = re.lastIndex; }
     if (last) out[last] = txt.slice(from).trim();
     const got = PLATFORMS.filter(p => out[p]);
-    if (!got.length) { $('pasteAsk').textContent = '找不到【平台】的標題。請一篇一篇貼到分頁裡。'; return; }
+    if (!got.length) return '找不到【平台】的標題。請一篇一篇貼到分頁裡。' + (out['要問我的'] ? `\nAI 想問你：${out['要問我的']}` : '');
+    cur.previousPosts = { ...cur.posts };
     got.forEach(p => cur.posts[p] = out[p]);
     fill();
-    $('pasteAsk').textContent = `放好了：${got.join('、')}。` + (out['要問我的'] ? `\nAI 想問你：${out['要問我的']}` : '');
+    return `放好了：${got.join('、')}。` + (out['要問我的'] ? `\nAI 想問你：${out['要問我的']}` : '');
+  }
+  $('btnPasteGo').onclick = () => { $('pasteAsk').textContent = applyAIText($('pasteText').value); };
+
+  const K_AI_USAGE = 'demo-ai-usage';
+  const aiDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  function dailyUsage() {
+    const saved = load(K_AI_USAGE, {});
+    if (saved.day === aiDay()) return saved;
+    const fresh = { day: aiDay(), openrouter: 0, gemini: 0, cost: 0, unknownCost: 0 };
+    store(K_AI_USAGE, fresh);
+    return fresh;
+  }
+  const dollars = n => '$' + Number(n).toFixed(6);
+  function showUsage(last) {
+    const u = dailyUsage();
+    const current = last ? `這次用 ${last.provider}：${last.tokens ?? '未提供'} tokens 約 ${last.cost == null ? '未提供' : dollars(last.cost)}｜` : '';
+    $('aiUsage').textContent = `${current}今天 OpenRouter ${u.openrouter} 次 ${dollars(u.cost)}${u.unknownCost ? '（部分費用未提供）' : ''}、Gemini ${u.gemini} 次`;
+  }
+  function recordUsage(provider, data) {
+    const u = dailyUsage();
+    u[provider]++;
+    const cost = typeof data.usage?.cost === 'number' && Number.isFinite(data.usage.cost) ? data.usage.cost : null;
+    if (provider === 'openrouter') { u.cost += cost ?? 0; if (cost == null) u.unknownCost++; }
+    store(K_AI_USAGE, u);
+    const result = { provider: provider === 'openrouter' ? 'OpenRouter' : 'Gemini', tokens: data.usage?.total_tokens, cost };
+    showUsage(result);
+    return result;
+  }
+  function aiError(provider, status, message) {
+    if (provider === 'openrouter') return ({ 401: '金鑰不對', 402: '全班的額度用完了', 404: '模型名稱打錯了', 429: '太多人同時在用' })[status] || `服務暫時出錯（${status}）`;
+    if (status === 400 && /API key/i.test(message)) return '金鑰不對';
+    return ({ 403: '沒有權限', 404: '模型名稱不對，或免費版不能用', 429: '免費額度用完了' })[status] || `服務暫時出錯（${status}）`;
+  }
+  async function requestAI(provider, settings, prompt) {
+    const gemini = provider === 'gemini';
+    const key = (gemini ? settings.geminiKey : settings.aiKey)?.trim();
+    if (!key) throw new Error('還沒填金鑰');
+    const body = { model: gemini ? settings.geminiModel || 'gemini-3.8-flash' : settings.customModel?.trim() || settings.model || AI_MODEL, messages: Array.isArray(prompt) ? prompt : [{ role: 'user', content: prompt }] };
+    if (!gemini) Object.assign(body, { max_tokens: 4000, reasoning: { effort: settings.effort || 'low', exclude: true }, usage: { include: true } });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    try {
+      let response;
+      try {
+        response = await fetch(gemini ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal
+        });
+      } catch (error) { throw new Error(controller.signal.aborted ? '等太久' : '連不到（檢查網路）'); }
+      let data;
+      try { data = await response.json(); } catch (error) {
+        throw new Error(controller.signal.aborted ? '等太久' : response.ok ? '回覆格式不對' : aiError(provider, response.status, ''));
+      }
+      if (Array.isArray(data)) data = data[0];
+      if (!response.ok || data?.error) throw new Error(aiError(provider, response.ok ? data.error.code || 500 : response.status, String(data?.error?.message || '')));
+      if (!data || typeof data !== 'object') throw new Error('回覆格式不對');
+      const usage = recordUsage(provider, data);
+      const choice = data.choices?.[0];
+      const text = typeof choice?.message?.content === 'string' ? choice.message.content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim() : '';
+      if (!text) throw new Error(choice?.finish_reason === 'length' ? '想太久，字數用完了（⚙ 設定把思考調成少想一點）' : '回覆是空的');
+      return { text, usage, warning: choice.finish_reason === 'length' ? '回覆可能被切掉了' : '' };
+    } finally { clearTimeout(timeout); }
+  }
+  // 所有 AI 寫作功能共用此入口；只有 auto 模式才會自動換組。
+  async function askAI(prompt) {
+    const settings = load(K_SET, {});
+    if (!settings.aiKey?.trim() && !settings.geminiKey?.trim()) throw new Error('還沒填金鑰。按 ⚙ 設定。');
+    const mode = settings.provider || 'auto';
+    const providers = mode === 'gemini' ? ['gemini'] : mode === 'openrouter' ? ['openrouter'] : settings.geminiKey?.trim() ? ['openrouter', 'gemini'] : ['openrouter'];
+    const errors = [];
+    for (const provider of providers) {
+      try {
+        const result = await requestAI(provider, settings, prompt);
+        if (errors.length) result.warning = [`⚠️ ${errors[0]}。這次改用 Gemini。`, result.warning].filter(Boolean).join('\n');
+        return result;
+      } catch (error) { errors.push(`${provider === 'openrouter' ? 'OpenRouter' : 'Gemini'}：${error.message}`); }
+    }
+    if (mode !== 'gemini' && !settings.geminiKey?.trim()) errors.push('沒有備胎');
+    throw new Error(errors.join('\n'));
+  }
+  let cancelCheckCelebration = () => {};
+  function celebrateCheck() {
+    cancelCheckCelebration();
+    const names = PLATFORMS.filter(p => (cur.posts[p] || '').trim()).join('／');
+    let fireworks, timer, frame;
+    const cleanup = () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+      fireworks?.remove();
+    };
+    const show = () => {
+      if (document.visibilityState !== 'visible') return;
+      cancelAnimationFrame(frame);
+      // 等關閉報告與匯入貼文的畫面先完成繪製，再播放完成提示。
+      frame = requestAnimationFrame(() => {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', onVisible);
+        fireworks = document.createElement('div');
+        fireworks.className = 'check-fireworks';
+        const card = document.createElement('div');
+        card.className = 'check-celebration';
+        card.setAttribute('role', 'status');
+        const title = document.createElement('strong'), detail = document.createElement('p');
+        title.textContent = '🎆 檢查完成';
+        detail.textContent = `${names} 貼文已匯入\n沒有錯誤或待確認項目`;
+        card.append(title, detail);
+        const colors = ['#e89713', '#e74b57', '#8b5cf6', '#0eac7c', '#189ce1'];
+        for (let wave = 0; wave < 2; wave++) {
+          for (let burst = 0; burst < 5; burst++) {
+            for (let spark = 0; spark < 24; spark++) {
+              const dot = document.createElement('span');
+              const angle = spark / 24 * Math.PI * 2;
+              const distance = 70 + Math.random() * 110;
+              dot.className = 'check-spark';
+              dot.setAttribute('aria-hidden', 'true');
+              dot.style.left = `${12 + burst * 19}%`;
+              dot.style.top = `${25 + (burst % 2) * 24}%`;
+              dot.style.animationDelay = `${wave * 1.7 + burst * .2}s`;
+              dot.style.setProperty('--spark-color', colors[burst]);
+              dot.style.setProperty('--spark-x', `${Math.cos(angle) * distance}px`);
+              dot.style.setProperty('--spark-y', `${Math.sin(angle) * distance + 50}px`);
+              fireworks.appendChild(dot);
+            }
+          }
+        }
+        fireworks.appendChild(card);
+        document.body.appendChild(fireworks);
+        timer = setTimeout(cleanup, 5000);
+      });
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') show(); };
+    cancelCheckCelebration = cleanup;
+    document.addEventListener('visibilitychange', onVisible);
+    frame = requestAnimationFrame(show);
+  }
+  let checkReview = null;
+  let checkBusy = false;
+  const confirmedReviews = new WeakMap();
+  const MAX_CHECK_ROUNDS = 5;
+  const reviewMatches = review => cur === review.draft && JSON.stringify(cur.posts) === review.posts && JSON.stringify(cur.fields) === review.fields && JSON.stringify(load(K_SET, {})) === review.settings;
+  const checkErrors = review => review.report.includes('❌');
+  const checkPending = review => review.report.includes('⚠');
+  const checkPassed = review => review.valid && !checkErrors(review) && !checkPending(review);
+
+  function createCheckReview() {
+    const settings = load(K_SET, {});
+    const saved = confirmedReviews.get(cur);
+    const fields = JSON.stringify(cur.fields), settingsText = JSON.stringify(settings);
+    return {
+      draft: cur, posts: JSON.stringify(cur.posts), fields, settings: settingsText,
+      candidatePosts: { ...cur.posts }, report: '', valid: false, questions: [],
+      confirmations: saved && saved.fields === fields && saved.settings === settingsText ? [...saved.entries] : []
+    };
+  }
+  function checkSource(review) {
+    const settings = JSON.parse(review.settings), fields = JSON.parse(review.fields);
+    const card = FIELDS.map(f => `${f.label}：${(f.type === 'date' ? dateText(fields[f.id]) : fields[f.id] || '') || '（空白）'}`).join('\n');
+    const checklist = (settings.check || '').trim() || [
+      '1. 日期價格對不對', '2. 有沒有多加的事', '3. 只能在某平台講的有沒有跑掉',
+      '4. 先不要講的有沒有出現', '5. 有沒有不能用的字', '6. 有沒有簡體字或大陸用語'
+    ].join('\n');
+    const posts = PLATFORMS.map(p => `【${p}】\n${review.candidatePosts[p] || '（尚無貼文）'}`).join('\n\n');
+    return `===== 品牌規格 =====\n${settings.spec || ''}\n\n===== 素材卡 =====\n${card}\n\n===== 檢查清單 =====\n${checklist}\n\n===== 各平台貼文（本輪最新修訂稿）=====\n${posts}\n\n===== 人工已確認的事實與決定（本次素材的補充依據；以最後一次回答為準）=====\n${review.confirmations.join('\n\n') || '（尚無人工回覆）'}`;
+  }
+  function renderCheckQuestions(review) {
+    $('checkQuestions').replaceChildren();
+    const previous = new Map(review.questions.map(q => [q.text, q]));
+    review.questions = [];
+    let platform = '總結';
+    review.report.split(/\r?\n/).forEach(line => {
+      const heading = line.match(/^\s*【([^】]+)】/);
+      if (heading) platform = heading[1];
+      if (!line.includes('⚠')) return;
+      const text = /^【[^】]+】.*⚠/.test(line) ? line : `【${platform}】${line}`;
+      const question = { text, answer: previous.get(text)?.answer || '', submitted: previous.get(text)?.submitted || false };
+      review.questions.push(question);
+      const card = document.createElement('div'), label = document.createElement('label'), input = document.createElement('textarea');
+      input.id = `checkReply${review.questions.length}`;
+      input.rows = 2;
+      input.style.minHeight = '70px';
+      input.value = question.answer;
+      input.placeholder = '請填寫確認的事實或決定；留白表示稍後確認，不會自行猜測。';
+      label.htmlFor = input.id;
+      label.textContent = question.text;
+      input.addEventListener('input', () => { question.answer = input.value; });
+      card.append(label, input);
+      $('checkQuestions').appendChild(card);
+    });
+  }
+  function renderCheckReview(review) {
+    $('checkReport').replaceChildren();
+    review.report.split(/\r?\n/).forEach(line => {
+      const row = document.createElement('div');
+      row.className = 'check-line';
+      if (line.includes('❌')) row.classList.add('check-fail');
+      else if (line.includes('⚠')) row.classList.add('check-warning');
+      row.textContent = line;
+      $('checkReport').appendChild(row);
+    });
+    renderCheckQuestions(review);
+    $('checkCandidates').replaceChildren();
+    PLATFORMS.filter(p => (review.candidatePosts[p] || '').trim()).forEach(p => {
+      const heading = document.createElement('h3'), text = document.createElement('div');
+      heading.textContent = `【${p}】`;
+      text.className = 'check-line';
+      text.textContent = review.candidatePosts[p];
+      $('checkCandidates').append(heading, text);
+    });
+  }
+  function setCheckBusy(busy) {
+    checkBusy = busy;
+    helperBusy = busy;
+    $('btnCheck').disabled = busy;
+    $('btnCheck').textContent = busy ? '🔍 處理中…' : '🔍 檢查官';
+    $('btnCheckAgain').disabled = busy;
+    const current = checkReview && reviewMatches(checkReview);
+    $('btnCheckFix').disabled = busy || !current || (!checkErrors(checkReview) && checkReview.valid);
+    $('btnCheckReply').disabled = busy || !current || !checkReview.questions.length;
+    $('checkQuestions').querySelectorAll('textarea').forEach(input => input.disabled = busy);
+    renderHelper();
+  }
+  function requireCurrentReview(review) {
+    if (checkReview !== review || !reviewMatches(review)) throw new Error('貼文、素材卡或設定已變更，修訂稿未匯入。請重新按「🔍 檢查官」。');
+  }
+  function validateCheckReport(review, text) {
+    // 每個實際有貼文的平台都必須有逐項結論；不把空白、截斷或漏平台當成通過。
+    const headings = [...text.matchAll(/^\s*【([^】]+)】/gm)];
+    for (const p of PLATFORMS.filter(p => (review.candidatePosts[p] || '').trim())) {
+      const index = headings.findIndex(m => m[1] === p);
+      if (index < 0) throw new Error(`檢查報告缺少【${p}】，尚未完成，請重新檢查。`);
+      const section = text.slice(headings[index].index, headings[index + 1]?.index ?? text.length);
+      if (!/^\s*\d+[.、．)）]?\s*[✅❌⚠]/mu.test(section)) throw new Error(`【${p}】缺少逐項檢查結論，請重新檢查。`);
+    }
+    if (!headings.some(m => m[1] === '總結')) throw new Error('檢查報告缺少總結，請重新檢查。');
+  }
+  function localCheckReport(review) {
+    const spec = JSON.parse(review.settings).spec || '';
+    const rule = spec.match(/驚嘆號[^\n。；]{0,30}?(?:最多|不超過|不得超過|上限(?:為)?|限)\s*([0-9０-９一二兩三四五六七八九十零〇]+)\s*個/);
+    let max;
+    if (rule) {
+      const numbers = { 零: 0, 〇: 0, 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+      max = numbers[rule[1]] ?? Number(rule[1].replace(/[０-９]/g, c => String(c.charCodeAt(0) - 0xff10)));
+    } else if (/驚嘆號[^\n。；]{0,20}(?:不能用|不得使用|禁止使用)|(?:不用|不使用|不准使用|禁止使用|不得使用)驚嘆號/.test(spec)) max = 0;
+    if (!Number.isFinite(max)) return '';
+    return PLATFORMS.filter(p => (review.candidatePosts[p] || '').trim()).flatMap(p => {
+      const count = (review.candidatePosts[p].match(/[!！]/g) || []).length;
+      return count > max ? [`【${p}｜程式核對】\n1 ❌ 驚嘆號目前 ${count} 個，品牌規格最多 ${max} 個；請刪除多餘驚嘆號。`] : [];
+    }).join('\n');
+  }
+  async function inspectCheckedPosts(review) {
+    requireCurrentReview(review);
+    review.valid = false;
+    $('checkFixStatus').classList.remove('error');
+    $('checkFixStatus').textContent = '正在檢查本輪最新修訂稿…';
+    const result = await askAI([
+      { role: 'system', content: `你是【${BRAND.name}】的審核官，專門挑毛病，不負責誇獎。把每一篇已有貼文的平台照品牌規格及檢查清單一條一條對，包括驚嘆號數量；不要替尚無貼文的平台編造報告。✅ 符合；❌ 不符合（寫出哪一句有問題、該怎麼改）；⚠️ 要靠人判斷的，先給意見。回覆格式：【平台名稱】獨立一行（平台名稱使用 FB、IG、LINE），然後每條一行「編號 符號 一句話」，最後【總結】列出要人工確認的事。不管清單有沒有寫，都另外檢查有沒有簡體字或大陸用語。報告用台灣繁體中文寫。每個待人工確認事項必須獨立一行並標記 ⚠️，總結不重複列同一問題。已提供人工回答的項目，請確認回答有正確套用，不要再問已回答的相同事實；未回答的問題仍標記 ⚠️。沒有待確認事項時總結寫「無待確認事項」，不要加 ⚠️。報告不要引用或解釋狀態符號的定義。` },
+      { role: 'user', content: checkSource(review) }
+    ]);
+    requireCurrentReview(review);
+    if (/回覆可能被切掉/.test(result.warning || '')) throw new Error('檢查報告被截斷，尚未完成，請重新檢查。');
+    validateCheckReport(review, result.text);
+    const localReport = localCheckReport(review);
+    // 未填答的問題不因模型在下一輪漏列，就自動視為已解決。
+    const outstanding = review.questions.filter(q => !q.submitted);
+    const missing = outstanding.filter(q => !result.text.includes(q.text.replace(/^【[^】]+】/, '')));
+    const checkedText = missing.length ? result.text.replace(/無待確認事項/g, '仍有未回答的人工確認項目，請見下方。') : result.text;
+    review.report = [checkedText, localReport, missing.length ? '【待人工確認】\n' + missing.map(q => q.text).join('\n') : ''].filter(Boolean).join('\n\n');
+    review.valid = true;
+    renderCheckReview(review);
+    open('mCheck');
+    $('checkStatus').textContent = result.warning || '檢查報告已更新，尚未完成的修訂稿保留在報告視窗。';
+  }
+  function finishCheckedPosts(review) {
+    requireCurrentReview(review);
+    if (!checkPassed(review)) return false;
+    if (JSON.stringify(review.candidatePosts) !== review.posts) {
+      cur.previousPosts = { ...cur.posts };
+      cur.posts = { ...review.candidatePosts };
+    }
+    confirmedReviews.set(cur, { fields: review.fields, settings: review.settings, entries: [...review.confirmations] });
+    fill();
+    checkReview = null;
+    $('mCheck').classList.remove('show');
+    $('checkStatus').classList.remove('error');
+    $('checkStatus').textContent = '🎆 修改完成：所有已有貼文的平台均已通過檢查，沒有錯誤或待確認項目；成果已匯入對應分頁並自動暫存，可按「復原上一版」還原。';
+    celebrateCheck();
+    return true;
+  }
+  function parseCheckedEdits(text, platforms) {
+    let revised;
+    try { revised = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); }
+    catch {
+      // 相容 AI 未遵守 JSON、但有正確平台標題的回覆；仍須所有平台完整才能套用。
+      revised = {};
+      const headings = [...text.matchAll(/^\s*【(FB|IG|LINE)】[ \t]*\r?$/gm)];
+      headings.forEach((h, i) => { revised[h[1]] = text.slice(h.index + h[0].length, headings[i + 1]?.index ?? text.length).trim(); });
+    }
+    if (!revised || Array.isArray(revised) || typeof revised !== 'object' || Object.keys(revised).length !== platforms.length || !platforms.every(p => typeof revised[p] === 'string' && revised[p].trim())) {
+      throw new Error('修改回覆缺少平台或格式不正確，修訂稿已保留，尚未匯入。請重試。');
+    }
+    return revised;
+  }
+  async function repairCheckedPosts(review) {
+    requireCurrentReview(review);
+    const platforms = PLATFORMS.filter(p => (review.candidatePosts[p] || '').trim());
+    const result = await askAI([
+      { role: 'system', content: `你是【${BRAND.name}】的貼文編輯。依檢查報告修正最新修訂稿的所有 ❌ 與明確修改建議；已符合的內容保留。品牌規格與素材卡是事實依據，不得新增未提供的事實。人工回覆是本次素材的補充事實與決定，以最後回答為準，依已回答的項目修改；未回答的 ⚠️ 不可猜測。請特別核對驚嘆號數量及台灣繁體用語。只回覆 JSON 物件，鍵為平台名稱、值為修改後完整貼文的字串；必須完整包含這些平台：${platforms.join('、')}。不要加 Markdown、說明或報告。` },
+      { role: 'user', content: `${checkSource(review)}\n\n===== 本輪檢查報告 =====\n${review.report}` }
+    ]);
+    requireCurrentReview(review);
+    if (/回覆可能被切掉/.test(result.warning || '')) throw new Error('修改回覆被截斷，修訂稿已保留，尚未匯入。請重試。');
+    const revised = parseCheckedEdits(result.text, platforms);
+    const before = JSON.stringify(review.candidatePosts);
+    platforms.forEach(p => review.candidatePosts[p] = revised[p].trim());
+    review.valid = false;
+    renderCheckReview(review);
+    return before !== JSON.stringify(review.candidatePosts);
+  }
+  async function continueCheckedPosts(review) {
+    for (let round = 1; round <= MAX_CHECK_ROUNDS; round++) {
+      $('checkFixStatus').textContent = `第 ${round} 輪自動修改（每次最多 ${MAX_CHECK_ROUNDS} 輪）…`;
+      const changed = await repairCheckedPosts(review);
+      await inspectCheckedPosts(review);
+      if (finishCheckedPosts(review)) return;
+      if (checkPending(review)) {
+        $('checkFixStatus').textContent = '修訂稿已保留，尚未匯入：仍有人工待確認項目，請填寫回覆後按「依我的回覆修改」。';
+        return;
+      }
+      if (!changed) {
+        $('checkFixStatus').textContent = 'AI 沒有改動貼文，但仍有錯誤。修訂稿已保留，尚未匯入；可按「一鍵修改」重試，或重新檢查。';
+        return;
+      }
+    }
+    $('checkFixStatus').textContent = `已連續修改 ${MAX_CHECK_ROUNDS} 輪，仍未通過。修訂稿已保留，尚未匯入；可按「一鍵修改」繼續。`;
+  }
+  async function startCheckedPosts(reuse = false) {
+    if (checkBusy || helperBusy || $('btnAI').disabled) return;
+    if (!PLATFORMS.some(p => (cur.posts[p] || '').trim())) { toast('還沒有貼文可以檢查'); return; }
+    cancelCheckCelebration();
+    const review = reuse && checkReview && reviewMatches(checkReview) ? checkReview : createCheckReview();
+    checkReview = review;
+    open('mCheck');
+    setCheckBusy(true);
+    try {
+      await inspectCheckedPosts(review);
+      if (!finishCheckedPosts(review)) $('checkFixStatus').textContent = checkPending(review) ? '請填寫人工回覆；可先用「一鍵修改」處理明確錯誤，修訂稿通過前不匯入。' : '發現錯誤，按「一鍵修改」後會持續修改及複查，通過才匯入。';
+    } catch (error) { showCheckError(error); }
+    finally { setCheckBusy(false); }
+  }
+  function showCheckError(error) {
+    $('checkFixStatus').classList.add('error');
+    $('checkFixStatus').textContent = error.message;
+    $('checkStatus').textContent = '尚未完成，修訂稿未匯入；請在檢查報告視窗查看原因。';
+  }
+  async function fixCheckedPosts(withReplies = false) {
+    const review = checkReview;
+    if (!review || checkBusy || helperBusy || $('btnAI').disabled) return;
+    try { requireCurrentReview(review); } catch (error) { showCheckError(error); return; }
+    const replies = withReplies ? review.questions.filter(q => q.answer.trim()).map(q => `${q.text}\n人工回覆：${q.answer.trim()}`) : [];
+    if (withReplies && !replies.length) { $('checkFixStatus').textContent = '請至少填寫一項人工回覆，未填寫的項目可以稍後確認。'; return; }
+    review.confirmations.push(...replies);
+    if (withReplies) review.questions.filter(q => q.answer.trim()).forEach(q => q.submitted = true);
+    setCheckBusy(true);
+    try {
+      // 前次修改後若複查失敗，必須先複查最新稿，不能拿舊報告盲改。
+      if (!review.valid && !withReplies) {
+        await inspectCheckedPosts(review);
+        if (finishCheckedPosts(review)) return;
+      }
+      await continueCheckedPosts(review);
+    } catch (error) { showCheckError(error); }
+    finally { setCheckBusy(false); }
+  }
+  $('btnCheck').onclick = () => startCheckedPosts(true);
+  $('btnCheckAgain').onclick = () => startCheckedPosts(true);
+  $('btnCheckFix').onclick = () => fixCheckedPosts();
+  $('btnCheckReply').onclick = () => fixCheckedPosts(true);
+  $('btnAI').onclick = async () => {
+    const button = $('btnAI'), status = $('aiStatus');
+    if (button.disabled || helperBusy) return;
+    const draft = cur;
+    button.disabled = true;
+    renderHelper();
+    button.textContent = '✨ AI 寫作中…';
+    status.classList.remove('error');
+    status.textContent = '';
+    showUsage();
+    try {
+      const result = await askAI(buildPrompt());
+      const text = result.text;
+      const notices = [result.warning];
+      showUsage(result.usage);
+      if (cur !== draft) {
+        $('pasteText').value = text;
+        $('pasteAsk').textContent = '';
+        notices.push('已切換貼文，AI 回覆放在「📥 貼回」視窗，請確認後再分到各平台。');
+        open('mPaste');
+      } else {
+        notices.push(applyAIText(text));
+        if (!PLATFORMS.some(p => text.includes(`【${p}】`))) {
+          notices.push('可以用 📥 貼回 手動分。');
+          $('pasteText').value = text;
+          $('pasteAsk').textContent = notices.filter(Boolean).join('\n');
+          open('mPaste');
+        }
+      }
+      status.textContent = notices.filter(Boolean).join('\n');
+    } catch (error) {
+      status.classList.add('error');
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+      button.textContent = '✨ 讓 AI 寫';
+      renderHelper();
+    }
   };
+  showUsage();
+  // 即使頁面一直開著，跨日後也會更新今天的統計。
+  setInterval(() => { if (load(K_AI_USAGE, {}).day !== aiDay()) showUsage(); }, 60000);
+
+  // 小幫手與上一版都跟著這篇貼文儲存；各平台的對話分開。
+  let helperBusy = false;
+  function renderHelper() {
+    const history = cur.chats?.[cur.tab] || [];
+    $('helperLog').replaceChildren();
+    history.forEach(message => {
+      const row = document.createElement('p');
+      row.textContent = `${message.role === 'user' ? '我' : 'AI 小幫手'}：${message.content}`;
+      $('helperLog').appendChild(row);
+    });
+    $('helperLog').scrollTop = $('helperLog').scrollHeight;
+    const busy = helperBusy || $('btnAI').disabled;
+    document.querySelectorAll('#helper button').forEach(button => button.disabled = busy);
+    $('helperInput').disabled = busy;
+    $('btnUndo').disabled = busy || !cur.previousPosts;
+    $('helperStatus').textContent = helperBusy ? 'AI 修改中…' : '';
+    $('helperStatus').classList.remove('error');
+  }
+  $('btnUndo').onclick = () => {
+    if (!cur.previousPosts || helperBusy || $('btnAI').disabled) return;
+    const current = { ...cur.posts };
+    cur.posts = { ...cur.previousPosts };
+    cur.previousPosts = current;
+    fill();
+    toast('已交換目前內容與上一版，再按一次可換回來');
+  };
+  async function editPost(instruction) {
+    if (helperBusy || $('btnAI').disabled) return;
+    if (!(cur.posts[cur.tab] || '').trim()) { toast('先讓 AI 寫一篇'); return; }
+    instruction = instruction.trim();
+    if (!instruction) { toast('請輸入修改要求'); return; }
+    const draft = cur, platform = cur.tab, original = cur.posts[platform];
+    const settings = load(K_SET, {});
+    const card = FIELDS.map(f => `${f.label}：${(f.type === 'date' ? dateText(cur.fields[f.id]) : cur.fields[f.id] || '') || '（空白）'}`).join('\n');
+    const userMessage = { role: 'user', content: `目前的${platform}貼文：${original}。請這樣改：${instruction}` };
+    const messages = [
+      { role: 'system', content: `你是${BRAND.name}的小編助理。使用者會叫你修改一篇${platform}貼文。只改使用者要求的地方，其他保持原樣；不能加素材卡上沒有的事實；遵守品牌規格；一律用台灣的繁體中文和台灣用語。不要出現簡體字，也不要用大陸用語（例如：視頻→影片、質量→品質、優化→改善、信息→訊息、網絡→網路、用戶→客人或使用者）。只回覆改好以後的整篇貼文，不要解釋、不要加標題。\n\n===== 品牌規格 =====\n${settings.spec || ''}\n\n===== 素材卡 =====\n${card}` },
+      ...(draft.chats?.[platform] || []).slice(-8),
+      userMessage
+    ];
+    helperBusy = true;
+    renderHelper();
+    try {
+      const result = await askAI(messages);
+      showUsage(result.usage);
+      if (cur !== draft || draft.posts[platform] !== original) {
+        toast('貼文已切換或修改，這次回覆尚未套用');
+        return;
+      }
+      draft.previousPosts = { ...draft.posts };
+      draft.posts[platform] = result.text;
+      draft.chats ||= {};
+      draft.chats[platform] ||= [];
+      draft.chats[platform].push({ role: 'user', content: instruction }, { role: 'assistant', content: result.text });
+      $('helperInput').value = '';
+      fill();
+      $('aiStatus').classList.remove('error');
+      $('aiStatus').textContent = result.warning || '';
+    } catch (error) {
+      $('helperStatus').classList.add('error');
+      $('helperStatus').textContent = error.message;
+    } finally {
+      const errorText = $('helperStatus').classList.contains('error') ? $('helperStatus').textContent : '';
+      helperBusy = false;
+      renderHelper();
+      if (errorText) {
+        $('helperStatus').classList.add('error');
+        $('helperStatus').textContent = errorText;
+      }
+    }
+  }
+  $('helperForm').onsubmit = event => { event.preventDefault(); editPost($('helperInput').value); };
+  $('helperShortcuts').onclick = event => { if (event.target.dataset.edit) editPost(event.target.dataset.edit); };
 
   // 一鍵複製
   $('btnCopy').onclick = () => copy(cur.posts[cur.tab] || '', `${cur.tab} 已複製`);
@@ -306,11 +985,13 @@ ${card}`;
   $('btnSave').onclick = () => {
     const posts = load(K_POSTS, []);
     const name = [cur.fields.date || '', topic() || '未命名'].join(' ').trim();
-    const rec = { id: cur.id || Date.now(), name, time: new Date().toLocaleString('zh-TW'), fields: { ...cur.fields }, posts: { ...cur.posts } };
-    cur.id = rec.id;
+    normalizePictures(cur);
+    const rec = { id: cur.id || Date.now(), name, time: new Date().toLocaleString('zh-TW'), fields: { ...cur.fields }, posts: { ...cur.posts }, chats: cur.chats || {}, previousPosts: cur.previousPosts || null, pictures: cur.pictures.map(p => ({ ...p })), mainPicture: cur.mainPicture };
     const i = posts.findIndex(p => p.id === rec.id);
     if (i >= 0) posts[i] = rec; else posts.unshift(rec);
-    store(K_POSTS, posts); store(K_DRAFT, cur);
+    if (!store(K_POSTS, posts)) return;
+    cur.id = rec.id;
+    if (!store(K_DRAFT, cur)) return;
     toast('存好了：' + name);
   };
 
@@ -326,7 +1007,7 @@ ${card}`;
   $('list').onclick = e => {
     const posts = load(K_POSTS, []);
     const o = e.target.dataset.open, d = e.target.dataset.del;
-    if (o) { const p = posts.find(p => String(p.id) === o); cur = { id: p.id, fields: { ...p.fields }, posts: { ...p.posts }, tab: PLATFORMS[0] }; fill(); $('mList').classList.remove('show'); toast('打開：' + p.name); }
+    if (o) { const p = posts.find(p => String(p.id) === o); cur = { id: p.id, fields: { ...p.fields }, posts: { ...p.posts }, tab: PLATFORMS[0], chats: p.chats || {}, previousPosts: p.previousPosts || null, pictures: (p.pictures || []).map(pic => ({ ...pic })), mainPicture: p.mainPicture || null }; fill(); $('mList').classList.remove('show'); toast('打開：' + p.name); }
     if (d && confirm('確定要刪除這一篇嗎？')) { store(K_POSTS, posts.filter(p => String(p.id) !== d)); showList(); }
   };
 
