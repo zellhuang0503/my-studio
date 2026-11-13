@@ -1,0 +1,4 @@
+[functions.ai-proxy]
+# The handler validates the user token with auth.getUser on EVERY request.
+# Manual verification supports projects using the newer signing keys as well.
+verify_jwt = false

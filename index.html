@@ -234,10 +234,8 @@
   <textarea id="setCheck"></textarea>
   <label>圖片規格（🪄 AI 想圖時照這個：風格、顏色、光線、不要的東西）</label>
   <textarea id="setImgSpec" placeholder="例：溫暖的自然光、木頭桌面和植物、米色和深咖啡色、像底片拍的；不要人臉、不要文字"></textarea>
-  <fieldset class="group"><legend>第一組：OpenRouter（老師發的，全班共用）</legend>
-  <label>AI 金鑰（以 sk-or 開頭）</label>
-  <input type="password" id="setKey" placeholder="sk-or-…" autocomplete="off">
-  <div class="hint">只存在這台電腦的這個瀏覽器裡。不會寫進 index.html，也不要貼給 Codex。</div>
+  <fieldset class="group"><legend>第一組：OpenRouter（雲端代呼叫）</legend>
+  <div class="hint">API 金鑰由管理員保存在 Supabase Secrets；登入並取得使用資格後即可使用。</div>
   <label>模型</label>
   <select id="setModel">
     <optgroup label="DeepSeek（最便宜，建議）">
@@ -267,9 +265,8 @@
   </select>
   <div class="hint">這些模型會先「想」再寫。想的字也算錢，也要等。寫貼文用「少想一點」就夠。</div>
   </fieldset>
-  <fieldset class="group"><legend>第二組：Gemini（自己的，備胎）</legend>
-  <label>Gemini 金鑰（到 aistudio.google.com/apikey 拿自己的）</label>
-  <input type="password" id="setGKey" placeholder="貼上一長串金鑰" autocomplete="off">
+  <fieldset class="group"><legend>第二組：Gemini（雲端備援）</legend>
+  <div class="hint">Gemini 金鑰由後端管理，不會下載到這台裝置。</div>
   <label>Gemini 模型</label>
   <select id="setGModel">
     <option value="gemini-3.8-flash">gemini-3.8-flash｜最新、寫得最好（預設）</option>
@@ -277,7 +274,9 @@
     <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite｜最快，小幫手改文夠用</option>
     <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite｜最省，最後的備胎</option>
   </select>
-  <div class="hint">就算你有 Gemini Pro 方案，API 金鑰用的還是免費額度，所以選這四個。Pro、Argon 叫不動。</div>
+  <div class="hint">可用模型與額度由管理員在後端設定；這裡選擇的模型必須在核准清單內。</div>
+  <label>或自己打 Gemini 模型名稱（可以不填，填了就用這個）</label>
+  <input id="setGModelOther" placeholder="填入管理員核准的 Gemini 模型 ID">
   </fieldset>
   <label>先用哪一組？</label>
   <select id="setOrder">
@@ -298,7 +297,8 @@
   <input id="setImgOther" placeholder="例：qwen/qwen-image-3-pro">
   <div class="hint">生一張圖 ≈ 寫 40 篇貼文的錢。Gemini 的免費金鑰不能生圖，所以生圖沒有備胎：OpenRouter 不能用的時候，改用 📤 上傳。</div>
   </fieldset>
-  <div class="actions"><button id="btnSetSave">儲存</button><button class="light" data-close>關閉</button></div>
+  <div id="settingsSay" role="status"></div>
+  <div class="actions"><button class="light" id="btnSettingsPull">從雲端重新載入設定</button><button id="btnSetSave">儲存</button><button class="light" data-close>關閉</button></div>
 </div></div>
 
 <!-- 組好的指令 -->
@@ -386,16 +386,13 @@
     { id: 'words',  label: '島哥這次說不要用的字', type: 'text' },
     { id: 'ask',    label: '❓ 還不確定的',         type: 'textarea' }
   ];
-  // AI 的網址和預設模型（金鑰不在這裡！金鑰在 ⚙ 設定，存在瀏覽器裡）
-  const AI_URL = 'https://openrouter.ai/api/v1/chat/completions';
+  // AI 由 Supabase Edge Function 呼叫；前端只有模型偏好，沒有供應商金鑰。
   const AI_MODEL = 'deepseek/deepseek-v4.1-flash';
-  // 第二組（備胎）：Gemini。金鑰一樣在 ⚙ 設定，不在這裡。
-  const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+  // 第二組（備胎）：Gemini。
   const GEMINI_MODEL = 'gemini-3.8-flash';
   // 每個平台的圖片大小（寬, 高）。手機預覽、AI 生圖的比例、下載，都照這個。
   const PIC_SIZE = { FB: [1080, 1080], IG: [1080, 1350], LINE: [1040, 1040], Threads: [1080, 1350] };
   // AI 生圖：只有第一組 OpenRouter 能生（Gemini 的免費金鑰不能生圖）
-  const IMG_URL = 'https://openrouter.ai/api/v1/images';
   const IMG_MODEL = 'bytedance-seed/seedream-5-0-flash';
   // 下載尺寸：要加就照格式加一行（w 寬、h 高）。「跟著平台」用上面的 PIC_SIZE。
   const SIZES = [
@@ -432,6 +429,35 @@
   // 繁體中文規則：這些模型預設會寫簡體字和大陸用語，每次都要提醒
   const LANG_RULE = '一律用台灣的繁體中文和台灣用語。不要出現簡體字，也不要用大陸用語（例如：視頻→影片、質量→品質、優化→改善、信息→訊息、網絡→網路、用戶→客人或使用者）。';
   const toast = msg => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 1600); };
+
+  const SETTING_FIELDS = ['spec', 'check', 'imgSpec', 'model', 'modelOther', 'think', 'gmodel', 'order', 'imgModel', 'imgOther'];
+  const cleanSettings = s => Object.fromEntries(SETTING_FIELDS.filter(k => typeof s?.[k] === 'string').map(k => [k, s[k].slice(0, 40000)]));
+  let settingsUser = null, settingsReady = false, settingsRevision = 0;
+  const settingsKey = id => id ? 'demo-settings:' + id : K_SET;
+  const readSettings = () => cleanSettings(load(settingsKey(settingsUser), {}));
+  // 舊金鑰只移除，不上傳；連帳號快取也只保留明確允許的一般設定。
+  for (const k of Object.keys(localStorage)) {
+    if (k === K_SET || k.startsWith('demo-settings:')) store(k, cleanSettings(load(k, {})));
+  }
+  const settingsSay = (msg, bad = false) => { $('settingsSay').textContent = msg; $('settingsSay').classList.toggle('err', bad); };
+  async function syncSettings(id) {
+    if (!sb || !id) { settingsSay('先 🔐 登入。', true); return; }
+    const revision = settingsRevision;
+    settingsSay('正在載入這個帳號的設定…');
+    try {
+      const { data, error } = await sb.from('user_settings').select('data').eq('user_id', id).maybeSingle();
+      if (error) throw error;
+      if (me?.id !== id || settingsRevision !== revision) return;
+      // 沒有雲端設定時，先沿用此帳號快取；首次遷移才使用這台的一般設定。
+      const value = data ? cleanSettings(data.data) : cleanSettings(load(settingsKey(id), load(K_SET, {})));
+      store(settingsKey(id), value);
+      settingsReady = true;
+      settingsSay(data ? '已載入雲端設定。' : '這個帳號還沒有雲端設定；確認內容後按「儲存」即可同步。');
+      if ($('mSet').classList.contains('show')) fillSettings();
+    } catch (e) {
+      if (me?.id === id) { settingsReady = false; settingsSay('設定同步失敗，尚未覆蓋雲端。請按「從雲端重新載入設定」重試。', true); }
+    }
+  }
 
   // 示範用：第一次打開，先把小島的品牌規格放進設定
   if (!localStorage.getItem(K_SET)) store(K_SET, { spec: "## 1. 品牌口氣（寫具體）\n\n像島哥本人跟熟客聊天。具體來說：\n\n- 句子短，一句只講一件事。\n- 用「你」，不用「您」、不用「親愛的」。\n- 驚嘆號一篇最多 1 個。\n- 講豆子：講「味道」和「故事」，不講便宜、不催人買。\n- 不寫「快來」「要買要快」「錯過可惜」這種催促的話。\n- 「慢慢來，比較快。」可以用，但一篇最多一次，不是每篇都要。\n\n## 2. 不能用的字\n\n- 網美風誇張字：爆表、必喝、神級、太狂、一定要衝、狂歡、史上最\n- 講便宜的字：CP 值、超划算、俗又大碗\n- 大賣場用語：「咖啡豆產品」→ 一律說「豆子」\n\n## 3. 不准自己加的東西\n\n老闆沒說過的，**一個字都不要加**：\n\n- 豆子的產地細節（海拔、農場、處理法、烘焙度）\n- 老闆沒說的風味和口感\n- 老闆沒說的活動規則（例如「限開賣當天」「預購也算名額」）\n- 「神秘驚喜」「限時倒數」這種製造緊張的話\n\n不確定的，先問我，不要猜。\n\n## 4. 三個平台的規則＋骨架＋範例\n\n### Facebook\n\n- 看的人：熟客、年紀比較大。\n- 4～6 段，每段 1～3 句。先講一個小故事或店裡的畫面，再講活動。\n- emoji 最多 2 個。\n- 不放 hashtag。\n\n**骨架（照這個格子填）：**\n\n```\n【小島日常】或【島哥的＿＿＿通知】\n（第 1 段：店裡的一個小畫面，1～2 句）\n（第 2 段：島哥說的話或想法，1～2 句）\n（第 3 段：活動是什麼、哪一天、多少錢）\n（第 4 段：優惠和條件，寫清楚誰可以、要做什麼）\n（可選：慢慢來，比較快。）\n\n📍 小島咖啡｜台中市西區小島巷 8 號\n週三～週日 11:00–19:00\n```\n\n**範例（照這篇的感覺寫）：**\n\n```\n【小島日常】\n這週烘了一批哥倫比亞，豆子在烘豆機裡慢慢轉，整間店都是焦糖的味道。\n\n島哥說，烘豆跟做人一樣，急不得。\n這批豆子要休息三天才會好喝，所以下週三才會上架。\n\n慢慢來，比較快。\n\n📍 小島咖啡｜台中市西區小島巷 8 號\n週三～週日 11:00–19:00\n```\n\n### Instagram\n\n- 看的人：年輕人，先看照片。\n- 整篇不超過 8 行（hashtag 不算）。一行一件事。\n- 用「.」空行分段。\n- 一定要 tag `@xiaodao.coffee`。\n- hashtag 5～8 個，放最後，一定包含：#小島咖啡 #台中咖啡 #自家烘焙\n\n**骨架：**\n\n```\n（第 1 行：一句短話＋1 個 emoji）\n\n（2～4 行：名稱、味道或重點，一行一件事）\n.\n（日期／時間）\n.\n@xiaodao.coffee\n#小島咖啡 #台中咖啡 #自家烘焙 ＋2～5 個這次活動的 hashtag\n```\n\n**範例：**\n\n```\n下週三見 ☕\n\n哥倫比亞 慧蘭 新烘好\n焦糖、堅果、一點點紅蘋果\n.\n慢慢來，比較快。\n.\n@xiaodao.coffee\n#小島咖啡 #台中咖啡 #自家烘焙 #手沖咖啡 #慢慢來\n```\n\n### LINE 官方帳號\n\n- 看的人：會員，想知道優惠。\n- 整篇在手機一個畫面內看完（大約 8 行內）。\n- 第一行就講好處。\n- ✔ 重點最多 3 點。\n- 一定要寫「怎麼做」。\n- 最後一行固定署名。\n\n**骨架：**\n\n```\n【會員限定】＋一句好處　（優惠用這個）\n【小島公告】＋一句重點　（營業時間、公告用這個）\n\n✔ 重點 1\n✔ 重點 2\n✔ 重點 3（最多 3 點）\n\n👉 （怎麼做，例如：直接回覆「＿＿」）\n\n小島咖啡 島哥\n```\n\n**範例：**\n\n```\n【會員限定】哥倫比亞新豆預購開始囉！\n\n✔ 會員預購 9 折\n✔ 下週三起到店取豆\n\n👉 直接回覆「預購＋數量」就可以\n\n小島咖啡 島哥\n```\n\n## 5. 平台限定的規則（寫具體）\n\n- 老闆說「只在 LINE 講」的，**不寫到 FB、IG**。\n- 老闆說「先不要講」「還沒確定」的，**三篇都不寫**。\n- 會員活動如果老闆說「三個平台都要」，FB、IG 也要寫，結尾加一句「還不是會員的，可以加小島的 LINE」。\n\n## 6. 寫之前一定要檢查\n\n- 價格、日期以老闆**最後一次**說的為準。\n- 日期後面寫星期幾，要對（例：10/10 是週六）。\n- 營業時間有變的（提早關、開比較晚），要寫清楚。", check: "> 卡住的同學，把這份改名成 `檢查清單.md` 放進資料夾。\n\n## 事實（拿活動卡來對）\n\n1. 價格、日期、星期幾、時間，跟活動卡一模一樣嗎？\n2. 有沒有活動卡上沒有的東西？（產地細節、風味、口感、規則、名額、驚喜）有的話刪掉。\n3. 優惠的條件寫對了嗎？（誰可以、要買什麼才有、送幾個、限量多少）\n4. 老闆改過口的地方，用的是最後的版本嗎？\n\n## 平台\n\n5. 「只能在 LINE 講」的事，有沒有跑到 FB、IG？\n6. 「先不要講」的事，三篇都沒有出現嗎？\n7. 每個平台的固定結尾都有嗎？（FB：地址＋營業時間／IG：tag＋hashtag／LINE：署名）\n\n## 口氣\n\n8. 有沒有不能用的字？（品牌規格裡的＋這次老闆新說不要的）\n9. 有沒有催人買的話？（快來、要買要快、錯過可惜）\n10. 讀起來像島哥嗎？還是像百貨公司、像網美？\n\n## 檢查完\n\n- 每篇每條都寫 ✅ 或 ❌。\n- 有 ❌ 的，先自己改好，再給我看：檢查結果＋改了哪裡。" , imgSpec: "溫暖的自然光，像下午三點從窗邊照進來。\n木頭桌面、陶杯、綠色植物；顏色以米色、奶茶色、深咖啡色為主。\n像底片相機拍的，有一點顆粒感，不要太亮、不要太飽和。\n構圖簡單，主角放中間偏下，上面留一點空白（之後要加字）。\n不要人臉、不要手以外的身體、不要任何文字和 logo。" });
@@ -551,41 +577,49 @@
   }
 
   // 設定
-  $('btnSet').onclick = () => {
-    const s = load(K_SET, {});
+  function fillSettings() {
+    const s = readSettings();
     $('setSpec').value = s.spec || ''; $('setCheck').value = s.check || '';
-    $('setKey').value = s.key || '';
     const known = [...$('setModel').options].some(o => o.value === s.model);
     $('setModel').value = known ? s.model : AI_MODEL;
     $('setModelOther').value = s.modelOther || (s.model && !known ? s.model : '');
     $('setThink').value = s.think || 'low';
-    $('setGKey').value = s.gkey || '';
-    $('setGModel').value = s.gmodel || GEMINI_MODEL;
+    const knownGm = [...$('setGModel').options].some(o => o.value === s.gmodel);
+    $('setGModel').value = knownGm ? s.gmodel : GEMINI_MODEL;
+    $('setGModelOther').value = s.gmodel && !knownGm ? s.gmodel : '';
     $('setOrder').value = s.order || 'or-first';
     const knownImg = [...$('setImgModel').options].some(o => o.value === s.imgModel);
     $('setImgModel').value = knownImg ? s.imgModel : IMG_MODEL;
     $('setImgOther').value = s.imgOther || '';
     $('setImgSpec').value = s.imgSpec || '';
-    open('mSet');
-  };
-  $('btnSetSave').onclick = () => {
+  }
+  $('btnSet').onclick = () => { fillSettings(); open('mSet'); if (!me) settingsSay('尚未登入：一般設定只存在這台；使用 AI 前請先登入。'); };
+  $('btnSettingsPull').onclick = () => syncSettings(me?.id);
+  $('btnSetSave').onclick = () => busy($('btnSetSave'), '儲存中…', async () => {
     const s = { spec: $('setSpec').value, check: $('setCheck').value };
-    s.key = $('setKey').value.trim();
     s.model = $('setModel').value;
     s.modelOther = $('setModelOther').value.trim();
     s.think = $('setThink').value;
-    s.gkey = $('setGKey').value.trim();
-    s.gmodel = $('setGModel').value;
+    s.gmodel = $('setGModelOther').value.trim() || $('setGModel').value;
     s.order = $('setOrder').value;
     s.imgModel = $('setImgModel').value;
     s.imgOther = $('setImgOther').value.trim();
     s.imgSpec = $('setImgSpec').value;
-    store(K_SET, s); close('mSet'); toast('設定存好了');
-  };
+    const id = me?.id;
+    if (id && !settingsReady) { settingsSay('請先成功載入雲端設定，再儲存，避免覆蓋其他裝置的設定。', true); return; }
+    settingsRevision++;
+    store(settingsKey(id), cleanSettings(s));
+    if (!id) { settingsSay('一般設定已存在這台。登入後才會同步；API 金鑰由後端管理。'); return; }
+    try {
+      const { error } = await sb.from('user_settings').upsert({ user_id: id, data: cleanSettings(s) }, { onConflict: 'user_id' });
+      if (error) throw error;
+      if (me?.id === id) { settingsSay('設定已同步到雲端。'); toast('設定已同步到雲端'); }
+    } catch (e) { if (me?.id === id) settingsSay('這台已暫存，但雲端沒有存成功。請稍後再按「儲存」。', true); }
+  });
 
   // 組好指令（Day 6 做的；現在是「✨ 讓 AI 寫」送出去的那段話）
   function buildPrompt() {
-    const s = load(K_SET, {});
+    const s = readSettings();
     const plats = PLATFORMS.join('、');
     let t = `（這段只要回覆文字，不要建立或修改任何檔案。）
 
@@ -645,60 +679,54 @@ ${cardText()}`;
   // ===== 第 4 節：讓它可靠＋第二組備胎 =====
   // 兩組 AI：第一組 OpenRouter（老師發的），第二組 Gemini（自己的）。
   const GROUPS = {
-    or: { name: 'OpenRouter', url: AI_URL, key: s => s.key, model: s => s.modelOther || s.model || AI_MODEL,
-          why: { 401: '金鑰不對（開頭要是 sk-or）', 402: '全班的額度用完了', 404: '模型名稱打錯了', 429: '太多人同時在用' } },
-    gm: { name: 'Gemini', url: GEMINI_URL, key: s => s.gkey, model: s => s.gmodel || GEMINI_MODEL,
-          why: { 400: '金鑰不對，或這次的要求它看不懂', 401: '金鑰不對', 403: '這把金鑰沒有權限用這個模型', 404: '模型名稱不對，或免費版不能用', 429: '免費額度用完了（這一分鐘或今天）' } }
+    or: { name: 'OpenRouter', provider: 'or', model: s => s.modelOther || s.model || AI_MODEL },
+    gm: { name: 'Gemini', provider: 'gm', model: s => s.gmodel || GEMINI_MODEL }
   };
-
-  // 叫其中一組一次。成功回傳 { text, usage }；失敗丟出人話。
-  async function callGroup(g, s, msgs, maxTokens) {
-    const body = { model: g.model(s), messages: msgs };
-    if (g === GROUPS.or) {
-      body.max_tokens = maxTokens;                                  // 「想」的字也算在裡面，所以給多一點
-      body.reasoning = { effort: s.think || 'low', exclude: true }; // 少想一點；想的過程不用回傳
-      body.usage = { include: true };
-    }  // Gemini 用它自己的預設，不限長度比較不會被切掉
+  async function aiRequest(body) {
+    if (!sb || !me) throw new Error('先 🔐 登入。');
+    if (!settingsReady) throw new Error('請先到 ⚙ 設定成功載入雲端設定，再使用 AI。');
+    const id = me.id;
+    const { data: { session }, error } = await sb.auth.getSession();
+    if (error || !session || session.user.id !== id) throw new Error('登入已過期，請重新登入。');
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 60000);
-    let res;
+    const timer = setTimeout(() => ctl.abort(), body.action === 'image' ? 120000 : 65000);
     try {
-      res = await fetch(g.url, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + g.key(s), 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: ctl.signal
+      const res = await fetch(SB_URL + '/functions/v1/ai-proxy', {
+        method: 'POST', signal: ctl.signal,
+        headers: { apikey: SB_KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
       });
+      const data = await res.json();
+      if (!res.ok) {
+        const e = new Error(data.error || 'AI 後端暫時無法使用，請聯絡管理員。');
+        e.stopFallback = !data.retryable; throw e;
+      }
+      if (me?.id !== id) { const e = new Error('帳號已切換，這次結果不載入。'); e.stopFallback = true; throw e; }
+      return data;
     } catch (e) {
-      if (e.name === 'AbortError') throw new Error('等了 60 秒還沒回');
-      throw new Error('連不到（檢查一下網路）');
+      if (e.name === 'AbortError') throw new Error('AI 回覆逾時，請稍後再試。');
+      throw e;
     } finally { clearTimeout(timer); }
-    let data = null;
-    try { data = await res.json(); } catch (e) {}
-    if (Array.isArray(data)) data = data[0];        // Gemini 出錯時會包成陣列
-    if (!res.ok || (data && data.error)) {
-      const msg = data && data.error && data.error.message ? data.error.message : '';
-      if (res.status === 400 && g === GROUPS.gm && /API key/i.test(msg)) throw new Error('金鑰不對');
-      throw new Error(g.why[res.status] || `回了錯誤 ${res.status}${msg ? '：' + msg.slice(0, 80) : ''}`);
-    }
-    const c = data && data.choices && data.choices[0];
-    // 有些模型會把「想」的過程包在 <think>…</think> 裡一起回來，拿掉
-    const text = ((c && c.message && c.message.content) || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    const cut = c && c.finish_reason === 'length';
-    if (!text) throw new Error(cut ? '想太久，字數用完了（⚙ 設定把「思考」調成「少想一點」）' : '回了空的');
-    return { text, usage: data.usage || {}, cut };
+  }
+  async function callGroup(g, s, msgs, maxTokens) {
+    const data = await aiRequest({ action: 'chat', provider: g.provider, model: g.model(s), messages: msgs, maxTokens, effort: s.think || 'low' });
+    const text = (data.text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    if (!text) throw new Error('AI 回了空的內容。');
+    return { text, usage: data.usage || {}, cut: !!data.cut };
   }
 
   // 問 AI：照設定的順序，第一組失敗就自動換第二組。
   // 回傳 { text, usage, via, note }：via＝這次是誰回的，note＝有沒有換組。
   async function askAI(messages, { system, maxTokens = 8000 } = {}) {   // Day 8：4000 → 8000，少一點「字數用完」
-    const s = load(K_SET, {});
+    const userId = me?.id;
+    const s = readSettings();
     const msgs = system ? [{ role: 'system', content: system }].concat(messages) : messages;
     const order = { 'or-first': ['or', 'gm'], 'gemini-only': ['gm'], 'or-only': ['or'] }[s.order || 'or-first'];
-    const ready = order.filter(k => GROUPS[k].key(s));
-    if (!ready.length) throw new Error('還沒填金鑰。按 ⚙ 設定，第一組貼老師發的，第二組貼自己的 Gemini。');
+    if (!me) throw new Error('先 🔐 登入。');
+    const ready = order || ['or', 'gm'];
     const fails = [];
     for (const k of ready) {
+      if (me?.id !== userId) throw new Error('帳號已切換，請重新送出要求。');
       const g = GROUPS[k];
       try {
         const r = await callGroup(g, s, msgs, maxTokens);
@@ -706,9 +734,9 @@ ${cardText()}`;
         r.note = (fails.length ? `⚠️ ${fails.join('；')}。這次改用 ${g.name}。` : '') +
                  (r.cut ? (fails.length ? '\n' : '') + '⚠️ 回覆可能被切掉了（字數用完）。看一下最後一段完不完整。' : '');
         return r;
-      } catch (e) { fails.push(`${g.name}：${e.message}`); }
+      } catch (e) { if (e.stopFallback) throw e; fails.push(`${g.name}：${e.message}`); }
     }
-    throw new Error(fails.join('\n') + (!s.gkey && (s.order || 'or-first') === 'or-first' ? '\n（還沒填第二組 Gemini 金鑰，所以沒有備胎。）' : ''));
+    throw new Error(fails.join('\n'));
   }
 
   // 用量：這次用了多少、今天兩組各用了幾次（全班共用 OpenRouter，大家自治）
@@ -766,7 +794,7 @@ ${cardText()}`;
     if (!ask) return;
     const post = (cur.posts[cur.tab] || '').trim();
     if (!post) { toast('這個平台還沒有貼文，先讓 AI 寫一篇'); return; }
-    const s = load(K_SET, {});
+    const s = readSettings();
     cur.chat = (cur.chat || []).concat({ role: 'user', text: ask }).slice(-8);
     renderChat(); store(K_DRAFT, cur);
     const system = `你是「${BRAND.name}」的小編助理。使用者會叫你修改一篇 ${cur.tab} 貼文。
@@ -801,7 +829,7 @@ ${cardText()}`;
 
   // ===== 第 6 節：檢查官（第二次呼叫，專門挑毛病） =====
   $('btnCheck').onclick = () => busy($('btnCheck'), '🔍 檢查中…', async () => {
-    const s = load(K_SET, {});
+    const s = readSettings();
     const have = PLATFORMS.filter(p => (cur.posts[p] || '').trim());
     if (!have.length) { toast('還沒有貼文可以檢查'); return; }
     const list = (s.check || '').trim() || `1. 日期、時間、價格跟素材卡一樣嗎？
@@ -976,39 +1004,12 @@ ${have.map(p => `【${p}】\n${cur.posts[p]}`).join('\n\n')}`;
     return ['1:1', '4:5', '3:4', '2:3', '9:16', '5:4', '4:3', '3:2', '16:9']
       .reduce((best, r) => Math.abs(val(r) - w / h) < Math.abs(val(best) - w / h) ? r : best);
   }
-  const IMG_WHY = { 400: '這個模型不接受這個要求，換一個生圖模型試試', 401: '金鑰不對（開頭要是 sk-or）', 402: '全班的額度用完了',
-                    404: '生圖模型名稱打錯了', 429: '太多人同時在用，等一下再按', 502: '這張沒畫完（沒有扣錢），再按一次' };
-  async function askImage(prompt, ratio, extra = {}) {
-    const s = load(K_SET, {});
-    if (!s.key) throw new Error('生圖要用第一組 OpenRouter 的金鑰（Gemini 的免費金鑰不能生圖）。到 ⚙ 設定貼上，或先用 📤 上傳。');
+  async function askImage(prompt, ratio) {
+    const s = readSettings();
     const model = s.imgOther || s.imgModel || IMG_MODEL;
-    const body = Object.assign({ model, prompt, aspect_ratio: ratio, resolution: '1K', n: 1 }, extra);
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 120000);
-    let res;
-    try {
-      res = await fetch(IMG_URL, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + s.key, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: ctl.signal
-      });
-    } catch (e) {
-      if (e.name === 'AbortError') throw new Error('等了 120 秒還沒畫好');
-      throw new Error('連不到（檢查一下網路）');
-    } finally { clearTimeout(timer); }
-    let data = null;
-    try { data = await res.json(); } catch (e) {}
-    if (!res.ok || (data && data.error)) {
-      const msg = data && data.error && data.error.message ? data.error.message : '';
-      throw new Error(IMG_WHY[res.status] || `回了錯誤 ${res.status}${msg ? '：' + msg.slice(0, 80) : ''}`);
-    }
-    const d = data && data.data && data.data[0];
-    let src = '';
-    if (d && d.b64_json) src = `data:${d.media_type || 'image/png'};base64,${d.b64_json}`;
-    else if (d && d.url) src = d.url.startsWith('data:') ? d.url : await readFile(await (await fetch(d.url)).blob());
-    if (!src) throw new Error('回來的資料裡找不到圖');
-    return { src: await shrink(src), cost: Number((data.usage || {}).cost || 0), model };
+    const data = await aiRequest({ action: 'image', provider: 'or', model, prompt, ratio });
+    if (!data.src || !/^data:image\/(png|jpeg|webp);base64,/.test(data.src)) throw new Error('AI 沒有回傳可用的圖片。');
+    return { src: await shrink(data.src), cost: Number(data.cost || 0), model };
   }
   // 今天生了幾張、花多少（跟寫文的用量存在一起）
   function noteImg(cost) {
@@ -1040,7 +1041,7 @@ ${have.map(p => `【${p}】\n${cur.posts[p]}`).join('\n\n')}`;
   // ===== Day 8 第 4 節：🪄 AI 想圖再畫（第一步：寫畫面描述；第二步：生圖） =====
   const NO_TEXT = '（畫面中不要出現任何文字、字母、數字或標誌。）';
   $('btnThink').onclick = () => busy($('btnThink'), '🪄 想圖中…', async () => {
-    const s = load(K_SET, {});
+    const s = readSettings();
     const post = (cur.posts[cur.tab] || '').trim();
     if (!post) { imgSay('這個平台還沒有貼文，先讓 AI 寫貼文。', true); return; }
     const system = `你是「${BRAND.name}」的美術指導。使用者會給你一篇社群貼文，請你寫一段「給 AI 畫圖用的畫面描述」。
@@ -1411,7 +1412,7 @@ ${ratioOf(cur.tab)}`;
     const m = (e && e.message) || String(e);
     if (/Invalid login credentials/i.test(m)) return 'Email 或密碼不對。';
     if (/already registered|already been registered/i.test(m)) return '這個 Email 註冊過了，直接按「登入」。';
-    if (/Email not confirmed/i.test(m)) return 'Supabase 在等你收確認信。到 Supabase 把「Confirm email」關掉，再按「登入」。';
+    if (/Email not confirmed/i.test(m)) return 'Supabase 在等你收確認信。請先到信箱完成 Email 驗證，再按「登入」。';
     if (/at least 6|Password should be/i.test(m)) return '密碼至少 6 個字。';
     if (/rate limit|too many/i.test(m)) return '試太多次了，等 1 分鐘再試。';
     if (/valid email|invalid format/i.test(m)) return 'Email 格式不對。';
@@ -1426,7 +1427,7 @@ ${ratioOf(cur.tab)}`;
     try {
       const r = kind === 'up' ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
       if (r.error) { loginSay('❌ ' + authWhy(r.error), true); return; }
-      if (kind === 'up' && !r.data.session) { loginSay('註冊好了，但 Supabase 要你先收確認信。\n到 Supabase 把「Confirm email」關掉，再按一次「登入」。', true); return; }
+      if (kind === 'up' && !r.data.session) { loginSay('註冊好了，但 Supabase 要你先收確認信。\n請先到信箱完成 Email 驗證，再按一次「登入」。', true); return; }
       $('loginPw').value = '';
       loginSay('✅ ' + (kind === 'up' ? '註冊好了，也登入了。' : '登入了。'));
     } catch (e) { loginSay('❌ ' + authWhy(e), true); }
@@ -1437,9 +1438,10 @@ ${ratioOf(cur.tab)}`;
   $('btnLogout').onclick = async () => { await sb.auth.signOut(); pulledFor = null; loginSay('登出了。這台電腦的存檔還在。'); };
   if (sb) sb.auth.onAuthStateChange((ev, session) => {
     me = session ? session.user : null;
+    if (settingsUser !== (me?.id || null)) { settingsUser = me?.id || null; settingsReady = false; settingsRevision++; if ($('mSet').classList.contains('show')) fillSettings(); }
     showMe();
     // 這裡面不要直接 await 別的 Supabase 動作，所以用 setTimeout 排到下一輪
-    if (me && pulledFor !== me.id) { pulledFor = me.id; setTimeout(() => onLogin(), 0); }
+    if (me && pulledFor !== me.id) { const id = me.id; pulledFor = id; setTimeout(() => { if (me?.id === id) onLogin(); }, 0); }
   });
   showMe();
 
@@ -1527,7 +1529,7 @@ ${ratioOf(cur.tab)}`;
   };
   $('btnPushAll').onclick = () => busy($('btnPushAll'), '⬆ 上傳中…', pushAll);
   $('btnPull').onclick = () => busy($('btnPull'), '⬇ 拿回來中…', () => pullAll(false));
-  onLogin = () => pullAll(true);
+  onLogin = () => { const id = me?.id; return Promise.allSettled([syncSettings(id), pullAll(true)]); };
 
   // ===== Day 10 第 5 節：🖼 圖片也存到雲端（Storage 的 images 桶子）=====
   const BUCKET = 'images';

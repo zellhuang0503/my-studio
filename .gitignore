@@ -1,0 +1,12 @@
+*
+!/index.html
+!/.gitignore
+!/supabase/
+!/supabase/**/
+!/supabase/**/*.sql
+!/supabase/**/*.ts
+!/supabase/config.toml
+!/docs/
+!/docs/supabase-setup.md
+!/tests/
+!/tests/secure-ai.cjs
