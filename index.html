@@ -1464,7 +1464,8 @@ ${ratioOf(cur.tab)}`;
       const { error } = await sb.from('posts').upsert(row, { onConflict: 'user_id,id' });
       if (error) throw error;
       cloudIds.add(String(rec.id));
-      cloudLine('☁ 雲端也存了：' + rec.name + (n ? `（傳了 ${n} 張圖）` : ''));
+      const total = (rec.images || []).filter(m => m.url).length;
+      cloudLine('☁ 雲端也存了：' + rec.name + `（傳了 ${n} 張圖）；這篇共 ${total} 張圖已在雲端。`);
       return true;
     } catch (e) {
       cloudLine('❌ 雲端沒存到：' + dbWhy(e) + '\n這台電腦有存到，不會不見。', true);
@@ -1541,24 +1542,36 @@ ${ratioOf(cur.tab)}`;
   // 這篇還沒上雲的圖 → 傳到「我的 id／圖的 id」，記下網址
   async function pushImages(rec) {
     let n = 0;
-    for (const m of rec.images || []) {
-      if (m.url) continue;
-      const src = IMG_SRC[m.id] || await dbGet(m.id);
-      if (!src) continue;
-      const blob = await (await fetch(src)).blob();
-      const ext = ((blob.type || 'image/jpeg').split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-      const path = `${me.id}/${m.id}.${ext}`;
-      const { error } = await sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' });
-      if (error) throw new Error(imgWhy(error));
-      m.url = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-      n++;
-    }
-    if (n) {   // 這台電腦也記住網址，下次不用再傳；存檔時間更新，別台「拿回來」才會換成有圖的版本
-      rec.savedAt = Date.now();
-      const posts = load(K_POSTS, []);
-      const i = posts.findIndex(p => String(p.id) === String(rec.id));
-      if (i >= 0) { posts[i].images = rec.images.map(x => ({ ...x })); posts[i].savedAt = rec.savedAt; store(K_POSTS, posts); }
-      if (String(cur.id) === String(rec.id)) { cur.images = rec.images.map(x => ({ ...x })); saveDraft(); }
+    try {
+      for (const m of rec.images || []) {
+        if (m.url) continue;
+        const src = IMG_SRC[m.id] || await dbGet(m.id);
+        if (!src) throw new Error('找不到這篇的圖片，請重新加入圖片後再存檔。');
+        const response = await fetch(src);
+        if (!response.ok) throw new Error('讀取圖片失敗，請重新加入圖片後再存檔。');
+        const blob = await response.blob();
+        const ext = ((blob.type || 'image/jpeg').split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+        const path = `${me.id}/${m.id}.${ext}`;
+        const { error } = await sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' });
+        if (error) throw new Error(imgWhy(error));
+        m.url = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+        n++;
+      }
+    } finally {
+      if (n) {   // 部分上傳失敗也記住成功的網址，下次不用再傳
+        rec.savedAt = Math.max(Date.now(), (rec.savedAt || 0) + 1);
+        const posts = load(K_POSTS, []);
+        const i = posts.findIndex(p => String(p.id) === String(rec.id));
+        if (i >= 0) { posts[i].images = rec.images.map(x => ({ ...x })); posts[i].savedAt = rec.savedAt; store(K_POSTS, posts); }
+        if (String(cur.id) === String(rec.id)) {
+          for (const m of cur.images || []) {
+            const uploaded = rec.images.find(x => x.id === m.id);
+            if (uploaded && uploaded.url) m.url = uploaded.url;
+          }
+          cur.savedAt = rec.savedAt;
+          saveDraft();
+        }
+      }
     }
     return n;
   }
