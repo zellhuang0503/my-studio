@@ -125,6 +125,12 @@
   .report .bad { background: #fff1f0; color: #c0392b; display: block; }
   .report .so { background: #fff8e6; color: #9a6b00; display: block; }
   #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 14px; display: none; z-index: 20; }
+  /* ===== Day 10：雲端 ===== */
+  #cloudLine { white-space: pre-wrap; font-size: 13px; color: #2f7d4f; margin-top: 6px; min-height: 0; }
+  #cloudLine.err, #loginSay.err, #syncSay.err { color: #c0392b; }
+  #loginSay, #syncSay, #loginState { white-space: pre-wrap; font-size: 13px; margin-top: 8px; }
+  .cl { font-size: 12px; padding: 1px 7px; border-radius: 9px; background: #e8f5ee; color: #2f7d4f; margin-left: 6px; white-space: nowrap; }
+  .cl.no { background: #f2f2f2; color: #888; }
 </style>
 </head>
 <body>
@@ -135,6 +141,7 @@
   <button id="btnList">📁 我的貼文</button>
   <button id="btnMenu">📋 圖文選單</button>
   <button id="btnSet">⚙ 設定</button>
+  <button id="btnLogin">🔐 登入</button>
 </header>
 
 <main>
@@ -143,6 +150,8 @@
   <section class="box">
     <h2>素材卡</h2>
     <div id="fields"></div>
+    <label for="pubDate">📅 預計發佈日（之後的貼文日曆會用）</label>
+    <input type="date" id="pubDate">
     <div class="actions">
       <button id="btnAI">✨ 讓 AI 寫</button>
       <button class="light" id="btnPrompt">🧩 看指令</button>
@@ -150,6 +159,7 @@
       <button class="light" id="btnSave">💾 存檔</button>
     </div>
     <div class="status" id="aiStatus"></div>
+    <div id="cloudLine"></div>
   </section>
   <!-- 左邊下面：這篇的圖 -->
   <section class="box">
@@ -308,9 +318,24 @@
   <div id="pasteAsk" class="small" style="white-space:pre-wrap"></div>
 </div></div>
 
+<!-- Day 10：登入 -->
+<div class="modal" id="mLogin"><div class="box">
+  <h2>🔐 登入（存到雲端）</h2>
+  <div id="loginState" class="small"></div>
+  <label for="loginEmail">Email</label>
+  <input type="email" id="loginEmail" autocomplete="username">
+  <label for="loginPw">密碼（至少 6 個字）</label>
+  <input type="password" id="loginPw" autocomplete="current-password">
+  <div class="hint">第一次用按「第一次：註冊」，之後都按「登入」。密碼是你自己設的，不會寫進 index.html。</div>
+  <div class="actions"><button id="btnSignIn">登入</button><button class="light" id="btnSignUp">第一次：註冊</button><button class="light" id="btnLogout">登出</button><button class="light" data-close>關閉</button></div>
+  <div id="loginSay"></div>
+</div></div>
+
 <!-- 我的貼文 -->
 <div class="modal" id="mList"><div class="box">
   <h2>📁 我的貼文</h2>
+  <div class="actions"><button id="btnPushAll">⬆ 全部上傳到雲端</button><button class="light" id="btnPull">⬇ 從雲端拿回來</button></div>
+  <div id="syncSay"></div>
   <div id="list"></div>
   <div class="actions"><button class="light" data-close>關閉</button></div>
 </div></div>
@@ -345,6 +370,8 @@
 
 <div id="toast"></div>
 
+<!-- Day 10：Supabase 的程式庫（官方 CDN） -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   // ===== 我的品牌、平台、欄位都在這裡改 =====
   const BRAND = { name: '小島咖啡', account: 'xiaodao.coffee' };
@@ -388,6 +415,11 @@
     { id: 'S2', label: '小型 2 格（左右）',      w: 2500, h: 843,  cols: 2, rows: 1 },
     { id: 'S1', label: '小型 1 格（整張）',      w: 2500, h: 843,  cols: 1, rows: 1 }
   ];
+  // ===== Day 10：雲端（Supabase）=====
+  // 這兩個可以公開（放上 GitHub 也沒關係），真正守門的是 Supabase 的 RLS（每一列只有主人看得到）。
+  // ⚠️ 只貼 Project URL 和 sb_publishable_ 開頭的那把。sb_secret_ 開頭的絕對不要貼。
+  const SB_URL = 'https://csfngjcugvabzpjfzvqa.supabase.co';   // 老師：貼你「小島咖啡」專案的 Project URL
+  const SB_KEY = 'sb_publishable_PZZm_udd_OgZcJh2P16XMg_Am2Dx7H0';   // 老師：貼你「小島咖啡」專案的 Publishable key（sb_publishable_ 開頭）
   const MENU_MAX = 1000000;   // LINE 規定選單圖 1 MB 以內（保險一點，用 1,000,000 位元組算）
 
   // ===== 下面是程式，不用改 =====
@@ -421,6 +453,7 @@
     id: null, fields: {}, posts: {}, tab: PLATFORMS[0], prev: null, chat: [],
     images: [], pick: null,
     imgPrompt: '',
+    publishDate: '',
     over: { text: '', pos: 'bottom', size: 'm', style: 'band' },
   });
   let cur = Object.assign(blank(), load(K_DRAFT, {}));
@@ -496,6 +529,7 @@
     renderChat();
     renderThumbs();
     $('imgPrompt').value = cur.imgPrompt || '';
+    $('pubDate').value = cur.publishDate || '';
     const ov = Object.assign(blank().over, cur.over);
     $('ovText').value = ov.text; $('ovPos').value = ov.pos; $('ovSize').value = ov.size; $('ovStyle').value = ov.style;
     store(K_DRAFT, cur);
@@ -856,7 +890,7 @@ ${have.map(p => `【${p}】\n${cur.posts[p]}`).join('\n\n')}`;
   const dbDel = id => dbDo('readwrite', st => st.delete(id));
   const dbCount = () => dbDo('readonly', st => st.count());
   const IMG_SRC = {};   // 從倉庫拿出來的圖，只放在記憶體
-  const srcOf = m => IMG_SRC[m.id] || m.src || '';
+  const srcOf = m => IMG_SRC[m.id] || m.src || m.url || '';
   async function addImage(src, from, note) {
     const id = newId();
     await dbPut(id, src);
@@ -878,7 +912,11 @@ ${have.map(p => `【${p}】\n${cur.posts[p]}`).join('\n\n')}`;
     let moved = 0;
     for (const m of cur.images || []) {
       if (m.src) { await dbPut(m.id, m.src); IMG_SRC[m.id] = m.src; delete m.src; moved++; }
-      else if (!IMG_SRC[m.id]) { const v = await dbGet(m.id); if (v) IMG_SRC[m.id] = v; }
+      else if (!IMG_SRC[m.id]) {
+        const v = await dbGet(m.id);
+        if (v) IMG_SRC[m.id] = v;
+        else if (m.url) { try { const d = await urlToData(m.url); await dbPut(m.id, d); IMG_SRC[m.id] = d; } catch (e) { /* 拿不到就先用網址顯示 */ } }   // Day 10：換裝置，從雲端把圖拿回來
+      }
     }
     if (moved) { saveDraft(); toast(`把 ${moved} 張圖搬進倉庫了`); }
   }
@@ -1308,25 +1346,27 @@ ${ratioOf(cur.tab)}`;
   $('btnCopy').onclick = () => copy(cur.posts[cur.tab] || '', `${cur.tab} 已複製`);
 
   // 存檔
-  $('btnSave').onclick = () => {
+  $('btnSave').onclick = async () => {
     const posts = load(K_POSTS, []);
     const name = [cur.fields.date || '', topic() || '未命名'].join(' ').trim();
     const rec = { id: cur.id || Date.now(), name, time: new Date().toLocaleString('zh-TW'), fields: { ...cur.fields }, posts: { ...cur.posts } };
     rec.images = (cur.images || []).map(i => ({ ...i })); rec.pick = cur.pick;
     rec.imgPrompt = cur.imgPrompt || '';
+    rec.publishDate = cur.publishDate || ''; rec.savedAt = Date.now();
     rec.over = { ...cur.over };
     cur.id = rec.id;
     const i = posts.findIndex(p => p.id === rec.id);
     if (i >= 0) posts[i] = rec; else posts.unshift(rec);
     store(K_POSTS, posts); store(K_DRAFT, cur);
-    toast('存好了：' + name);
+    const ok = await cloudSave(rec);
+    toast('存好了：' + name + (ok === null ? '（只存在這台電腦）' : ok ? '（☁ 雲端也存了）' : '（雲端沒存到，看紅字）'));
   };
 
   // 我的貼文
   function showList() {
     const posts = load(K_POSTS, []);
     $('list').innerHTML = posts.length ? posts.map(p =>
-      `<div class="item"><div><b>${esc(p.name)}</b><div class="small">${esc(p.time)}</div></div>
+      `<div class="item"><div><b>${esc(p.name)}</b>${badge(p)}<div class="small">${esc(p.time)}${p.publishDate ? '｜📅 ' + esc(p.publishDate) : ''}</div></div>
        <button data-open="${p.id}">打開</button><button class="light" data-del="${p.id}">刪除</button></div>`).join('')
       : '<p class="small">還沒有存過的貼文。</p>';
   }
@@ -1339,15 +1379,189 @@ ${ratioOf(cur.tab)}`;
       cur = Object.assign(blank(), { id: p.id, fields: { ...p.fields }, posts: { ...p.posts } });
       cur.images = (p.images || []).map(i => ({ ...i })); cur.pick = p.pick || null;
       cur.imgPrompt = p.imgPrompt || '';
+      cur.publishDate = p.publishDate || '';
       cur.over = Object.assign(blank().over, p.over);
       fill(); close('mList'); toast('打開：' + p.name);
       loadSrcs().then(() => { renderThumbs(); preview(); });
     }
-    if (d && confirm('確定要刪除這一篇嗎？')) { store(K_POSTS, posts.filter(p => String(p.id) !== d)); showList(); }
+    if (d && confirm(me ? '確定要刪除這一篇嗎？（雲端的也會一起刪）' : '確定要刪除這一篇嗎？')) { store(K_POSTS, posts.filter(p => String(p.id) !== d)); cloudDel(d); showList(); }
   };
 
   // 新的一篇
   $('btnNew').onclick = () => { if (confirm('清空畫面，開始新的一篇？（存過的不會不見）')) { cur = blank(); fill(); } };
+
+  // ===== Day 10 第 2 節：🔐 登入（Supabase Auth：Email＋密碼）=====
+  const sb = (SB_URL && SB_KEY && window.supabase) ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+  let me = null;               // 現在登入的人；沒登入是 null
+  let onLogin = () => {};      // 登入以後要做的事（第 4 節會用）
+  let pulledFor = null;        // 同一個人只自動做一次
+  function cloudWhy() {
+    if (!SB_URL || !SB_KEY) return 'JavaScript 最上面的 SB_URL、SB_KEY 還沒填。';
+    if (!window.supabase) return 'Supabase 的程式庫載不到（網路被擋？重新整理試試）。';
+    return '';
+  }
+  const loginSay = (msg, bad) => { const el = $('loginSay'); el.textContent = msg; el.classList.toggle('err', !!bad); };
+  function showMe() {
+    $('btnLogin').textContent = me ? '☁ ' + me.email : '🔐 登入';
+    $('loginState').textContent = me ? `已登入：${me.email}\n存檔會同時存到雲端。`
+      : sb ? '還沒登入。登入以後，💾 存檔會同時存到雲端。' : '還沒接雲端：' + cloudWhy() + '\n其他功能照常可以用。';
+    $('btnLogout').style.display = me ? '' : 'none';
+  }
+  function authWhy(e) {
+    const m = (e && e.message) || String(e);
+    if (/Invalid login credentials/i.test(m)) return 'Email 或密碼不對。';
+    if (/already registered|already been registered/i.test(m)) return '這個 Email 註冊過了，直接按「登入」。';
+    if (/Email not confirmed/i.test(m)) return 'Supabase 在等你收確認信。到 Supabase 把「Confirm email」關掉，再按「登入」。';
+    if (/at least 6|Password should be/i.test(m)) return '密碼至少 6 個字。';
+    if (/rate limit|too many/i.test(m)) return '試太多次了，等 1 分鐘再試。';
+    if (/valid email|invalid format/i.test(m)) return 'Email 格式不對。';
+    if (/Failed to fetch|NetworkError/i.test(m)) return '連不到 Supabase：SB_URL 對嗎？網路通嗎？';
+    return m;
+  }
+  async function doAuth(kind) {
+    if (!sb) { loginSay('還沒接雲端：' + cloudWhy(), true); return; }
+    const email = $('loginEmail').value.trim(), password = $('loginPw').value;
+    if (!email || !password) { loginSay('Email 和密碼都要填。', true); return; }
+    loginSay(kind === 'up' ? '註冊中…' : '登入中…');
+    try {
+      const r = kind === 'up' ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+      if (r.error) { loginSay('❌ ' + authWhy(r.error), true); return; }
+      if (kind === 'up' && !r.data.session) { loginSay('註冊好了，但 Supabase 要你先收確認信。\n到 Supabase 把「Confirm email」關掉，再按一次「登入」。', true); return; }
+      $('loginPw').value = '';
+      loginSay('✅ ' + (kind === 'up' ? '註冊好了，也登入了。' : '登入了。'));
+    } catch (e) { loginSay('❌ ' + authWhy(e), true); }
+  }
+  $('btnLogin').onclick = () => { showMe(); loginSay(''); open('mLogin'); };
+  $('btnSignUp').onclick = () => doAuth('up');
+  $('btnSignIn').onclick = () => doAuth('in');
+  $('btnLogout').onclick = async () => { await sb.auth.signOut(); pulledFor = null; loginSay('登出了。這台電腦的存檔還在。'); };
+  if (sb) sb.auth.onAuthStateChange((ev, session) => {
+    me = session ? session.user : null;
+    showMe();
+    // 這裡面不要直接 await 別的 Supabase 動作，所以用 setTimeout 排到下一輪
+    if (me && pulledFor !== me.id) { pulledFor = me.id; setTimeout(() => onLogin(), 0); }
+  });
+  showMe();
+
+  // ===== Day 10 第 3 節：💾 存檔同時存到雲端（posts 表）=====
+  $('pubDate').addEventListener('input', e => { cur.publishDate = e.target.value; store(K_DRAFT, cur); });
+  const cloudLine = (msg, bad) => { const el = $('cloudLine'); el.textContent = msg; el.classList.toggle('err', !!bad); };
+  const cloudIds = new Set();   // 雲端有的貼文 id
+  function dbWhy(e) {
+    const c = (e && e.code) || '', m = (e && e.message) || String(e);
+    if (c === '42P01' || c === 'PGRST205' || /does not exist|Could not find the table/i.test(m)) return '雲端還沒有 posts 表：到 Supabase 的 SQL Editor 貼「建表」那段，按 Run。';
+    if (c === '42501' || /row-level security/i.test(m)) return '雲端不讓你存（RLS 權限）：SQL 的權限那段沒跑到，再貼一次按 Run。';
+    if (/JWT|not authenticated/i.test(m)) return '登入過期了，🔐 重新登入一次。';
+    if (/Failed to fetch|NetworkError/i.test(m)) return '連不到 Supabase：網路通嗎？';
+    return m;
+  }
+  // 回傳：null＝沒登入（只存這台）、true＝雲端存好、false＝雲端失敗
+  async function cloudSave(rec) {
+    if (!sb || !me) { cloudLine('只存在這台電腦。🔐 登入以後，會同時存到雲端。'); return null; }
+    try {
+      const n = await pushImages(rec);
+      const row = { id: String(rec.id), user_id: me.id, data: rec, publish_date: rec.publishDate || null, updated_at: new Date().toISOString() };
+      const { error } = await sb.from('posts').upsert(row, { onConflict: 'user_id,id' });
+      if (error) throw error;
+      cloudIds.add(String(rec.id));
+      cloudLine('☁ 雲端也存了：' + rec.name + (n ? `（傳了 ${n} 張圖）` : ''));
+      return true;
+    } catch (e) {
+      cloudLine('❌ 雲端沒存到：' + dbWhy(e) + '\n這台電腦有存到，不會不見。', true);
+      return false;
+    }
+  }
+
+  // ===== Day 10 第 4 節：⬆ 全部上傳／⬇ 從雲端拿回來（換電腦、換手機）=====
+  const syncSay = (msg, bad) => { const el = $('syncSay'); el.textContent = msg; el.classList.toggle('err', !!bad); };
+  const badge = p => !me ? '' : cloudIds.has(String(p.id)) ? '<span class="cl">☁ 雲端有</span>' : '<span class="cl no">只在這台</span>';
+  const newer = p => p.savedAt || Number(p.id) || 0;
+  async function pushAll() {
+    if (!sb || !me) { syncSay('先 🔐 登入。', true); return; }
+    const posts = load(K_POSTS, []);
+    let ok = 0;
+    for (const p of posts) {
+      syncSay(`上傳中… ${ok + 1}／${posts.length}`);
+      if (!(await cloudSave(p))) { syncSay(`上傳了 ${ok} 篇，第 ${ok + 1} 篇失敗：\n` + $('cloudLine').textContent, true); showList(); return; }
+      ok++;
+    }
+    syncSay(`⬆ 上傳好了：${ok} 篇。`); showList();
+  }
+  async function pullAll(auto) {
+    if (!sb || !me) { syncSay('先 🔐 登入。', true); return; }
+    const { data, error } = await sb.from('posts').select('data, updated_at').order('updated_at', { ascending: false });
+    if (error) { const m = '❌ 拿不回來：' + dbWhy(error); syncSay(m, true); if (auto) cloudLine(m, true); return; }
+    const posts = load(K_POSTS, []);
+    let add = 0, upd = 0;
+    cloudIds.clear();
+    for (const row of data || []) {
+      const r = row.data;
+      if (!r || r.id == null) continue;
+      cloudIds.add(String(r.id));
+      const i = posts.findIndex(p => String(p.id) === String(r.id));
+      if (i < 0) { posts.push(r); add++; }
+      else if (newer(r) > newer(posts[i])) { posts[i] = r; upd++; }
+    }
+    posts.sort((a, b) => newer(b) - newer(a));
+    store(K_POSTS, posts);
+    const m = `⬇ 拿回來了：新增 ${add} 篇、更新 ${upd} 篇（雲端一共 ${cloudIds.size} 篇）。`;
+    syncSay(m); if (auto && (add || upd)) toast(m);
+    if ($('mList').classList.contains('show')) showList();
+  }
+  async function cloudDel(id) {
+    if (!sb || !me) return;
+    const { error } = await sb.from('posts').delete().eq('id', String(id));
+    if (error) syncSay('❌ 雲端的沒刪到：' + dbWhy(error), true); else { cloudIds.delete(String(id)); syncSay('雲端的也刪了。'); }
+  }
+  // 登出：借別人的電腦用，要把拿回來的貼文清掉（不然下一個人打開就看得到）
+  $('btnLogout').onclick = async () => {
+    await sb.auth.signOut(); pulledFor = null; cloudIds.clear();
+    if (confirm('要把這台電腦上的貼文也清掉嗎？\n借別人的電腦用，請按「確定」。\n自己的電腦，按「取消」。')) {
+      localStorage.removeItem(K_POSTS); localStorage.removeItem(K_DRAFT);
+      try { await dbDo('readwrite', st => st.clear()); } catch (e) { /* 倉庫打不開就算了 */ }
+      Object.keys(IMG_SRC).forEach(k => delete IMG_SRC[k]);
+      cur = blank(); fill();
+      loginSay('登出了，這台電腦上的貼文和圖也清掉了。雲端的都還在。');
+    } else loginSay('登出了。這台電腦的存檔還在。');
+  };
+  $('btnPushAll').onclick = () => busy($('btnPushAll'), '⬆ 上傳中…', pushAll);
+  $('btnPull').onclick = () => busy($('btnPull'), '⬇ 拿回來中…', () => pullAll(false));
+  onLogin = () => pullAll(true);
+
+  // ===== Day 10 第 5 節：🖼 圖片也存到雲端（Storage 的 images 桶子）=====
+  const BUCKET = 'images';
+  const urlToData = async url => { const r = await fetch(url); if (!r.ok) throw new Error('圖拿不回來 ' + r.status); return readFile(await r.blob()); };
+  function imgWhy(e) {
+    const m = (e && e.message) || String(e);
+    if (/Bucket not found/i.test(m)) return '雲端還沒有 images 桶子：SQL Editor 貼「圖片」那段，按 Run。';
+    if (/row-level security|Unauthorized|403/i.test(m)) return '雲端不讓你傳圖：SQL 的圖片權限那段沒跑到，再貼一次按 Run。';
+    if (/exceeded|too large|413/i.test(m)) return '這張圖太大了，傳不上去。';
+    return m;
+  }
+  // 這篇還沒上雲的圖 → 傳到「我的 id／圖的 id」，記下網址
+  async function pushImages(rec) {
+    let n = 0;
+    for (const m of rec.images || []) {
+      if (m.url) continue;
+      const src = IMG_SRC[m.id] || await dbGet(m.id);
+      if (!src) continue;
+      const blob = await (await fetch(src)).blob();
+      const ext = ((blob.type || 'image/jpeg').split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      const path = `${me.id}/${m.id}.${ext}`;
+      const { error } = await sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' });
+      if (error) throw new Error(imgWhy(error));
+      m.url = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+      n++;
+    }
+    if (n) {   // 這台電腦也記住網址，下次不用再傳；存檔時間更新，別台「拿回來」才會換成有圖的版本
+      rec.savedAt = Date.now();
+      const posts = load(K_POSTS, []);
+      const i = posts.findIndex(p => String(p.id) === String(rec.id));
+      if (i >= 0) { posts[i].images = rec.images.map(x => ({ ...x })); posts[i].savedAt = rec.savedAt; store(K_POSTS, posts); }
+      if (String(cur.id) === String(rec.id)) { cur.images = rec.images.map(x => ({ ...x })); saveDraft(); }
+    }
+    return n;
+  }
 
   fill();
   loadSrcs().then(() => { renderThumbs(); preview(); }).catch(e => toast('圖片倉庫打不開：' + e.message));
