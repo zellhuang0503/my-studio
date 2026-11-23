@@ -118,16 +118,22 @@
   .modal .box { width: min(760px, 100%); max-height: 90vh; overflow: auto; }
   .modal textarea { min-height: 160px; }
   .calendar-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-  .calendar-nav strong { flex: 1; text-align: center; color: var(--main); }
+  .calendar-nav strong { flex: 1; text-align: center; color: var(--main); white-space: nowrap; }
+  .calendar-friends { display: flex; align-items: center; gap: 4px; margin: 0; white-space: nowrap; }
+  .calendar-friends[hidden] { display: none; }
+  .calendar-friends input { width: 6em; padding: 4px; }
   .calendar-grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
   .calendar-grid th, .calendar-grid td { border: 1px solid var(--line); padding: 5px; }
   .calendar-grid th { background: var(--bg); }
   .calendar-grid td { height: 76px; vertical-align: top; cursor: pointer; }
   .calendar-grid .other-month { background: #f6f6f6; color: #666; }
+  .calendar-grid .important { background: color-mix(in srgb, var(--main) 8%, white); }
   .calendar-grid .selected { box-shadow: inset 0 0 0 2px var(--main); }
   .calendar-select { display: block; width: 100%; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+  .calendar-date-label { display: flex; align-items: baseline; }
   .calendar-day { display: inline-block; padding: 2px 5px; }
   .calendar-day[aria-current="date"] { border-radius: calc(var(--radius) / 2); background: var(--main); color: #fff; }
+  .calendar-important { color: var(--main); font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; }
   .calendar-post { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; padding: 2px 4px; border-radius: 4px; background: var(--bg); color: var(--text); font-size: 12px; }
   .calendar-post.incomplete { border-left: 3px solid #c0392b; background: #fff1f0; }
   .calendar-section { margin-top: 16px; }
@@ -136,13 +142,18 @@
   .calendar-row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; max-width: 100%; }
   .calendar-row-actions input { width: 145px; min-width: 0; max-width: 100%; }
   .calendar-missing { color: #a52c24; font-size: 12px; }
+  #calSummary p { margin: 4px 0; }
+  #calSummary .calendar-warning { color: #a52c24; }
   @media (max-width: 640px) {
     #mCalendar { padding: 8px; }
     #mCalendar .box { padding: 12px 8px; }
-    .calendar-nav { gap: 4px; }
+    .calendar-nav { gap: 4px; flex-wrap: wrap; }
     .calendar-nav button { font-size: 12px; padding: 6px 4px; }
+    .calendar-friends { margin-left: auto; }
     .calendar-grid th, .calendar-grid td { padding: 2px; }
     .calendar-grid td { height: 58px; }
+    .calendar-date-label { display: block; }
+    .calendar-important { display: block; font-size: 10px; }
     .calendar-post { font-size: 10px; padding-inline: 2px; }
   }
   .item { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 8px 0; }
@@ -376,12 +387,18 @@
     <strong id="calMonth" aria-live="polite"></strong>
     <button class="light" id="calNext">下個月 ›</button>
     <button class="light" id="calToday">今天</button>
+    <label class="small calendar-friends" id="calLineFriendsLabel" hidden>
+      LINE 好友人數 <input id="calLineFriends" type="number" min="0" step="1" inputmode="numeric">
+    </label>
   </div>
   <table class="calendar-grid" aria-labelledby="calMonth">
     <thead><tr><th scope="col">日</th><th scope="col">一</th><th scope="col">二</th><th scope="col">三</th><th scope="col">四</th><th scope="col">五</th><th scope="col">六</th></tr></thead>
     <tbody id="calDays"></tbody>
   </table>
-  <p class="small" id="calSummary"></p>
+  <section class="calendar-section" aria-labelledby="calSummaryTitle">
+    <h2 id="calSummaryTitle">這個月的總結</h2>
+    <div class="small" id="calSummary" aria-live="polite"></div>
+  </section>
   <section class="calendar-section" id="calDay" aria-labelledby="calDayTitle" hidden>
     <h2 id="calDayTitle"></h2>
     <div id="calDayPosts"></div>
@@ -428,6 +445,18 @@
 <script>
   // ===== 我的品牌、平台、欄位都在這裡改 =====
   const BRAND = { name: '小島咖啡', account: 'xiaodao.coffee' };
+  // 跟我的品牌沒關係的就刪掉；我自己的重要日子也加在這裡
+  const BIG_DAYS = [
+    { date: '2026-11-27', name: '黑色星期五' },
+    { date: '2026-12-05', name: '七週年慶' },
+    { date: '2026-12-12', name: '雙 12' },
+    { date: '2026-12-19', name: '聖誕禮盒開賣' },
+    { date: '2026-12-22', name: '冬至' },
+    { date: '2026-12-25', name: '聖誕節' },
+    { date: '2026-12-31', name: '跨年' },
+    { date: '2027-01-01', name: '元旦' },
+    { date: '2027-01-01', name: '元旦特惠' }
+  ];
   const PLATFORMS = ['FB', 'IG', 'LINE'];   // 可以用：FB、IG、LINE、Threads
   const FIELDS = [
     { id: 'date',   label: '活動日期',             type: 'date' },
@@ -1443,6 +1472,8 @@ ${ratioOf(cur.tab)}`;
   };
 
   // 貼文日曆
+  const K_LINE_FRIENDS = 'demo-calendar-line-friends';
+  const calendarHasLine = PLATFORMS.includes('LINE');
   let calendarMonth, selectedDate = '';
   function calendarPost(post) {
     const platforms = PLATFORMS.filter(p => post.posts?.[p]?.trim());
@@ -1465,12 +1496,18 @@ ${ratioOf(cur.tab)}`;
   }
   function showCalendar() {
     const year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
-    const today = new Date();
     const dateKey = date => [String(date.getFullYear()).padStart(4, '0'), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
-    const todayKey = dateKey(today);
+    const todayKey = dateKey(new Date());
+    const namesByDate = new Map();
+    for (const { date, name } of BIG_DAYS) {
+      if (!namesByDate.has(date)) namesByDate.set(date, []);
+      namesByDate.get(date).push(name);
+    }
+    const dayHeading = key => [dateText(key), namesByDate.get(key)?.join('、')].filter(Boolean).join('｜');
     const postsByDate = new Map();
     const unscheduled = [];
-    let scheduled = 0, incomplete = 0;
+    let scheduled = 0, incomplete = 0, lineSends = 0;
+    let gap = 0, longestGap = 0, longestGapEnd = 0;
     for (const record of load(K_POSTS, [])) {
       const post = calendarPost(record);
       if (!post.publishDate) { unscheduled.push(post); continue; }
@@ -1491,6 +1528,14 @@ ${ratioOf(cur.tab)}`;
         if (inMonth) {
           scheduled += posts.length;
           incomplete += posts.filter(post => post.missing.length).length;
+          lineSends += posts.filter(post => post.platforms.includes('LINE')).length;
+          if (key >= todayKey) {
+            gap = posts.length ? 0 : gap + 1;
+            if (gap > longestGap) {
+              longestGap = gap;
+              longestGapEnd = date.getDate();
+            }
+          }
         }
         const labels = posts.map(post => {
           const title = esc(post.title);
@@ -1499,16 +1544,59 @@ ${ratioOf(cur.tab)}`;
             : `<span class="calendar-post" title="${title}">${title}</span>`;
         }).join('');
         const selected = key === selectedDate;
-        const classes = [inMonth ? '' : 'other-month', selected ? 'selected' : ''].filter(Boolean).join(' ');
-        cells.push(`<td class="${classes}" data-day="${key}"><button class="calendar-select" aria-label="${dateText(key)}" aria-pressed="${selected}"><time class="calendar-day" datetime="${key}"${key === todayKey ? ' aria-current="date"' : ''}>${date.getDate()}</time>${labels}</button></td>`);
+        const names = namesByDate.get(key);
+        const important = names ? `<span class="calendar-important">${esc(names.join('、'))}</span>` : '';
+        const classes = [inMonth ? '' : 'other-month', selected ? 'selected' : '', names ? 'important' : ''].filter(Boolean).join(' ');
+        cells.push(`<td class="${classes}" data-day="${key}"><button class="calendar-select" aria-label="${esc(dayHeading(key))}" aria-pressed="${selected}"><span class="calendar-date-label"><time class="calendar-day" datetime="${key}"${key === todayKey ? ' aria-current="date"' : ''}>${date.getDate()}</time>${important}</span>${labels}</button></td>`);
       }
       rows.push(`<tr>${cells.join('')}</tr>`);
     }
     $('calMonth').textContent = `${year} 年 ${month + 1} 月`;
     $('calDays').innerHTML = rows.join('');
-    $('calSummary').textContent = `這個月排了 ${scheduled} 篇｜還缺東西的 ${incomplete} 篇｜還沒排日子的 ${unscheduled.length} 篇`;
+
+    const summary = [];
+    const addSummary = (message, warning = false) => {
+      const line = document.createElement('p');
+      line.textContent = message;
+      if (warning) line.className = 'calendar-warning';
+      summary.push(line);
+    };
+    addSummary(`這個月排了 ${scheduled} 篇，還缺東西的 ${incomplete} 篇，還沒排日子的 ${unscheduled.length} 篇`, incomplete > 0 || unscheduled.length > 0);
+    if (calendarHasLine) {
+      const friends = load(K_LINE_FRIENDS, '');
+      if (friends === '') {
+        addSummary(`LINE 群發 ${lineSends} 次。上面填 LINE 好友人數，就會算用掉幾則`);
+      } else {
+        const messages = lineSends * Number(friends);
+        const remaining = Math.max(0, 200 - messages);
+        const warning = messages > 200;
+        addSummary(`LINE 群發 ${lineSends} 次 × 好友 ${friends} 人 ＝ ${messages} 則（免費方案一個月 200 則，還剩 ${remaining} 則）${warning ? ' ⚠ 超過了，後面的會發不出去' : ''}`, warning);
+      }
+    }
+    const monthEnd = dateKey(new Date(year, month, daysInMonth));
+    if (monthEnd >= todayKey) {
+      const monthNumber = month + 1;
+      const range = longestGap ? `（${monthNumber}/${longestGapEnd - longestGap + 1}～${monthNumber}/${longestGapEnd}）` : '';
+      const warning = longestGap >= 7;
+      addSummary(`最久連續 ${longestGap} 天沒有貼文${range}${warning ? ' ⚠ 超過一週' : ''}`, warning);
+    }
+    const monthStart = dateKey(calendarMonth);
+    const upcoming = BIG_DAYS.filter(({ date }) => date >= monthStart && date <= monthEnd && date >= todayKey);
+    upcoming.sort((a, b) => a.date.localeCompare(b.date));
+    for (const { date, name } of upcoming) {
+      const day = Number(date.slice(8));
+      let count = 0;
+      for (let offset = -7; offset <= 0; offset++) {
+        const key = dateKey(new Date(year, month, day + offset));
+        count += postsByDate.get(key)?.length || 0;
+      }
+      const label = `${month + 1}/${day} ${name}`;
+      if (count) addSummary(`✅ ${label}：前面排了 ${count} 篇`);
+      else addSummary(`⚠ ${label}：當天和前 7 天都沒有貼文`, true);
+    }
+    $('calSummary').replaceChildren(...summary);
     $('calDay').hidden = !selectedDate;
-    $('calDayTitle').textContent = dateText(selectedDate);
+    $('calDayTitle').textContent = dayHeading(selectedDate);
     $('calDayPosts').innerHTML = (postsByDate.get(selectedDate) || []).map(calendarRow).join('') || '<p class="small">這一天還沒有貼文。</p>';
     $('calUnscheduledTitle').textContent = `還沒排日子（${unscheduled.length} 篇）`;
     $('calUnscheduledPosts').innerHTML = unscheduled.map(calendarRow).join('') || '<p class="small">目前沒有未排程的貼文。</p>';
@@ -1541,7 +1629,18 @@ ${ratioOf(cur.tab)}`;
     selectedDate = '';
     showCalendar();
   }
-  $('btnCalendar').onclick = () => { resetCalendarMonth(); open('mCalendar'); };
+  $('calLineFriendsLabel').hidden = !calendarHasLine;
+  $('calLineFriends').oninput = e => {
+    const { value, valueAsNumber, validity } = e.target;
+    if (!validity.valid || (value !== '' && !Number.isSafeInteger(valueAsNumber))) return;
+    store(K_LINE_FRIENDS, value === '' ? '' : String(valueAsNumber));
+    showCalendar();
+  };
+  $('btnCalendar').onclick = () => {
+    if (calendarHasLine) $('calLineFriends').value = load(K_LINE_FRIENDS, '');
+    resetCalendarMonth();
+    open('mCalendar');
+  };
   $('calPrev').onclick = () => moveCalendarMonth(-1);
   $('calNext').onclick = () => moveCalendarMonth(1);
   $('calToday').onclick = resetCalendarMonth;
