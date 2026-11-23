@@ -122,11 +122,20 @@
   .calendar-grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
   .calendar-grid th, .calendar-grid td { border: 1px solid var(--line); padding: 5px; }
   .calendar-grid th { background: var(--bg); }
-  .calendar-grid td { height: 76px; vertical-align: top; }
+  .calendar-grid td { height: 76px; vertical-align: top; cursor: pointer; }
   .calendar-grid .other-month { background: #f6f6f6; color: #666; }
+  .calendar-grid .selected { box-shadow: inset 0 0 0 2px var(--main); }
+  .calendar-select { display: block; width: 100%; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
   .calendar-day { display: inline-block; padding: 2px 5px; }
   .calendar-day[aria-current="date"] { border-radius: calc(var(--radius) / 2); background: var(--main); color: #fff; }
   .calendar-post { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; padding: 2px 4px; border-radius: 4px; background: var(--bg); color: var(--text); font-size: 12px; }
+  .calendar-post.incomplete { border-left: 3px solid #c0392b; background: #fff1f0; }
+  .calendar-section { margin-top: 16px; }
+  .calendar-row { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .calendar-row-info { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+  .calendar-row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; max-width: 100%; }
+  .calendar-row-actions input { width: 145px; min-width: 0; max-width: 100%; }
+  .calendar-missing { color: #a52c24; font-size: 12px; }
   @media (max-width: 640px) {
     #mCalendar { padding: 8px; }
     #mCalendar .box { padding: 12px 8px; }
@@ -373,6 +382,14 @@
     <tbody id="calDays"></tbody>
   </table>
   <p class="small" id="calSummary"></p>
+  <section class="calendar-section" id="calDay" aria-labelledby="calDayTitle" hidden>
+    <h2 id="calDayTitle"></h2>
+    <div id="calDayPosts"></div>
+  </section>
+  <section class="calendar-section" aria-labelledby="calUnscheduledTitle">
+    <h2 id="calUnscheduledTitle"></h2>
+    <div id="calUnscheduledPosts"></div>
+  </section>
   <div class="actions"><button class="light" data-close>關閉</button></div>
 </div></div>
 
@@ -1400,6 +1417,15 @@ ${ratioOf(cur.tab)}`;
   };
 
   // 我的貼文
+  function openSavedPost(p, modal) {
+    cur = Object.assign(blank(), { id: p.id, fields: { ...p.fields }, posts: { ...p.posts } });
+    cur.images = (p.images || []).map(i => ({ ...i })); cur.pick = p.pick || null;
+    cur.imgPrompt = p.imgPrompt || '';
+    cur.publishDate = p.publishDate || '';
+    cur.over = Object.assign(blank().over, p.over);
+    fill(); close(modal); toast('打開：' + p.name);
+    loadSrcs().then(() => { renderThumbs(); preview(); });
+  }
   function showList() {
     const posts = load(K_POSTS, []);
     $('list').innerHTML = posts.length ? posts.map(p =>
@@ -1411,32 +1437,45 @@ ${ratioOf(cur.tab)}`;
   $('list').onclick = e => {
     const posts = load(K_POSTS, []);
     const o = e.target.dataset.open, d = e.target.dataset.del;
-    if (o) {
-      const p = posts.find(p => String(p.id) === o);
-      cur = Object.assign(blank(), { id: p.id, fields: { ...p.fields }, posts: { ...p.posts } });
-      cur.images = (p.images || []).map(i => ({ ...i })); cur.pick = p.pick || null;
-      cur.imgPrompt = p.imgPrompt || '';
-      cur.publishDate = p.publishDate || '';
-      cur.over = Object.assign(blank().over, p.over);
-      fill(); close('mList'); toast('打開：' + p.name);
-      loadSrcs().then(() => { renderThumbs(); preview(); });
-    }
+    const post = o && posts.find(p => String(p.id) === o);
+    if (post) openSavedPost(post, 'mList');
     if (d && confirm(me ? '確定要刪除這一篇嗎？（雲端的也會一起刪）' : '確定要刪除這一篇嗎？')) { store(K_POSTS, posts.filter(p => String(p.id) !== d)); cloudDel(d); showList(); }
   };
 
   // 貼文日曆
-  let calendarMonth;
+  let calendarMonth, selectedDate = '';
+  function calendarPost(post) {
+    const platforms = PLATFORMS.filter(p => post.posts?.[p]?.trim());
+    const missing = [];
+    if (!post.images?.length) missing.push('缺圖');
+    if (!platforms.length) missing.push('還沒寫');
+    return { ...post, title: topic(post.fields ?? {}) || post.name || '未命名', platforms, missing };
+  }
+  function calendarRow(post) {
+    const id = esc(String(post.id)), title = esc(post.title);
+    const platforms = post.platforms.length ? `<div class="small">${esc(post.platforms.join('・'))}</div>` : '';
+    const missing = post.missing.length ? `<span class="calendar-missing">⚠ ${post.missing.join('、')}</span>` : '';
+    const dateInput = post.publishDate ? `<input type="date" aria-label="${title}的預計發佈日" data-cal-date="${id}" value="${esc(post.publishDate)}">` : '';
+    const scheduleButton = post.publishDate
+      ? `<button class="light" data-cal-remove="${id}">拿掉日子</button>`
+      : `<button data-cal-schedule="${id}">排到這一天</button>`;
+    const openButton = `<button class="light" data-cal-open="${id}">打開</button>`;
+    return `<div class="calendar-row"><div class="calendar-row-info"><b>${title}</b> ${missing}${platforms}</div>
+      <div class="calendar-row-actions">${post.publishDate ? dateInput + openButton + scheduleButton : scheduleButton + openButton}</div></div>`;
+  }
   function showCalendar() {
     const year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
     const today = new Date();
     const dateKey = date => [String(date.getFullYear()).padStart(4, '0'), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
     const todayKey = dateKey(today);
     const postsByDate = new Map();
-    let unscheduled = 0, scheduled = 0;
-    for (const post of load(K_POSTS, [])) {
-      if (!post.publishDate) { unscheduled++; continue; }
+    const unscheduled = [];
+    let scheduled = 0, incomplete = 0;
+    for (const record of load(K_POSTS, [])) {
+      const post = calendarPost(record);
+      if (!post.publishDate) { unscheduled.push(post); continue; }
       if (!postsByDate.has(post.publishDate)) postsByDate.set(post.publishDate, []);
-      postsByDate.get(post.publishDate).push(topic(post.fields ?? {}) || post.name);
+      postsByDate.get(post.publishDate).push(post);
     }
 
     const firstWeekday = calendarMonth.getDay();
@@ -1448,33 +1487,86 @@ ${ratioOf(cur.tab)}`;
       for (let weekday = 0; weekday < 7; weekday++) {
         const date = new Date(year, month, week * 7 + weekday + 1 - firstWeekday);
         const key = dateKey(date), inMonth = date.getMonth() === month;
-        const topics = postsByDate.get(key) || [];
-        if (inMonth) scheduled += topics.length;
-        const labels = topics.map(title => {
-          const safeTitle = esc(title);
-          return `<span class="calendar-post" title="${safeTitle}">${safeTitle}</span>`;
+        const posts = postsByDate.get(key) || [];
+        if (inMonth) {
+          scheduled += posts.length;
+          incomplete += posts.filter(post => post.missing.length).length;
+        }
+        const labels = posts.map(post => {
+          const title = esc(post.title);
+          return post.missing.length
+            ? `<span class="calendar-post incomplete" title="${title}｜${post.missing.join('、')}">⚠ ${title}</span>`
+            : `<span class="calendar-post" title="${title}">${title}</span>`;
         }).join('');
-        cells.push(`<td${inMonth ? '' : ' class="other-month"'}><time class="calendar-day" datetime="${key}"${key === todayKey ? ' aria-current="date"' : ''}>${date.getDate()}</time>${labels}</td>`);
+        const selected = key === selectedDate;
+        const classes = [inMonth ? '' : 'other-month', selected ? 'selected' : ''].filter(Boolean).join(' ');
+        cells.push(`<td class="${classes}" data-day="${key}"><button class="calendar-select" aria-label="${dateText(key)}" aria-pressed="${selected}"><time class="calendar-day" datetime="${key}"${key === todayKey ? ' aria-current="date"' : ''}>${date.getDate()}</time>${labels}</button></td>`);
       }
       rows.push(`<tr>${cells.join('')}</tr>`);
     }
     $('calMonth').textContent = `${year} 年 ${month + 1} 月`;
     $('calDays').innerHTML = rows.join('');
-    $('calSummary').textContent = `這個月排了 ${scheduled} 篇｜還沒排日子的有 ${unscheduled} 篇`;
+    $('calSummary').textContent = `這個月排了 ${scheduled} 篇｜還缺東西的 ${incomplete} 篇｜還沒排日子的 ${unscheduled.length} 篇`;
+    $('calDay').hidden = !selectedDate;
+    $('calDayTitle').textContent = dateText(selectedDate);
+    $('calDayPosts').innerHTML = (postsByDate.get(selectedDate) || []).map(calendarRow).join('') || '<p class="small">這一天還沒有貼文。</p>';
+    $('calUnscheduledTitle').textContent = `還沒排日子（${unscheduled.length} 篇）`;
+    $('calUnscheduledPosts').innerHTML = unscheduled.map(calendarRow).join('') || '<p class="small">目前沒有未排程的貼文。</p>';
+  }
+  async function setPostPublishDate(id, date) {
+    const posts = load(K_POSTS, []);
+    const post = posts.find(p => String(p.id) === id);
+    if (!post || (post.publishDate || '') === date) return;
+    post.publishDate = date;
+    post.savedAt = Math.max(Date.now(), (post.savedAt || 0) + 1);
+    store(K_POSTS, posts);
+    if (String(cur.id) === id) {
+      cur.publishDate = date;
+      $('pubDate').value = date;
+      store(K_DRAFT, cur);
+    }
+    showCalendar();
+    const message = date ? `排到 ${dateText(date)}` : '已拿掉日子';
+    toast(message);
+    if (sb && me && (await cloudSave(post)) === false) toast('日子已存到這台，雲端沒存到');
   }
   function resetCalendarMonth() {
     const now = new Date();
     calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    selectedDate = '';
     showCalendar();
   }
   function moveCalendarMonth(offset) {
     calendarMonth.setMonth(calendarMonth.getMonth() + offset);
+    selectedDate = '';
     showCalendar();
   }
   $('btnCalendar').onclick = () => { resetCalendarMonth(); open('mCalendar'); };
   $('calPrev').onclick = () => moveCalendarMonth(-1);
   $('calNext').onclick = () => moveCalendarMonth(1);
   $('calToday').onclick = resetCalendarMonth;
+  $('calDays').onclick = e => {
+    const day = e.target.closest('[data-day]');
+    if (!day) return;
+    selectedDate = day.dataset.day;
+    showCalendar();
+    $('calDays').querySelector('.selected button').focus({ preventScroll: true });
+  };
+  $('mCalendar').addEventListener('click', e => {
+    const { calOpen, calSchedule, calRemove } = e.target.dataset;
+    if (calOpen) {
+      const post = load(K_POSTS, []).find(p => String(p.id) === calOpen);
+      if (post) openSavedPost(post, 'mCalendar');
+    }
+    if (calSchedule) {
+      if (selectedDate) setPostPublishDate(calSchedule, selectedDate);
+      else toast('先點月曆上的一天');
+    }
+    if (calRemove) setPostPublishDate(calRemove, '');
+  });
+  $('calDayPosts').addEventListener('change', e => {
+    if (e.target.dataset.calDate) setPostPublishDate(e.target.dataset.calDate, e.target.value);
+  });
 
   // 新的一篇
   $('btnNew').onclick = () => { if (confirm('清空畫面，開始新的一篇？（存過的不會不見）')) { cur = blank(); fill(); } };
@@ -1537,6 +1629,7 @@ ${ratioOf(cur.tab)}`;
   $('pubDate').addEventListener('input', e => { cur.publishDate = e.target.value; store(K_DRAFT, cur); });
   const cloudLine = (msg, bad) => { const el = $('cloudLine'); el.textContent = msg; el.classList.toggle('err', !!bad); };
   const cloudIds = new Set();   // 雲端有的貼文 id
+  const cloudSaves = new Map();
   function dbWhy(e) {
     const c = (e && e.code) || '', m = (e && e.message) || String(e);
     if (c === '42P01' || c === 'PGRST205' || /does not exist|Could not find the table/i.test(m)) return '雲端還沒有 posts 表：到 Supabase 的 SQL Editor 貼「建表」那段，按 Run。';
@@ -1548,11 +1641,27 @@ ${ratioOf(cur.tab)}`;
   // 回傳：null＝沒登入（只存這台）、true＝雲端存好、false＝雲端失敗
   async function cloudSave(rec) {
     if (!sb || !me) { cloudLine('只存在這台電腦。🔐 登入以後，會同時存到雲端。'); return null; }
+    const userId = me.id;
+    const key = `${userId}/${rec.id}`;
+    // 同篇依序上傳，避免較慢完成的舊日期蓋掉新日期。
+    const previous = cloudSaves.get(key) || Promise.resolve();
+    const pending = previous.then(() => upsertCloudPost(rec, userId));
+    cloudSaves.set(key, pending);
     try {
+      return await pending;
+    } finally {
+      if (cloudSaves.get(key) === pending) cloudSaves.delete(key);
+    }
+  }
+  async function upsertCloudPost(rec, userId) {
+    try {
+      if (me?.id !== userId) return false;
       const n = await pushImages(rec);
-      const row = { id: String(rec.id), user_id: me.id, data: rec, publish_date: rec.publishDate || null, updated_at: new Date().toISOString() };
+      if (me?.id !== userId) return false;
+      const row = { id: String(rec.id), user_id: userId, data: rec, publish_date: rec.publishDate || null, updated_at: new Date().toISOString() };
       const { error } = await sb.from('posts').upsert(row, { onConflict: 'user_id,id' });
       if (error) throw error;
+      if (me?.id !== userId) return false;
       cloudIds.add(String(rec.id));
       const total = (rec.images || []).filter(m => m.url).length;
       cloudLine('☁ 雲端也存了：' + rec.name + `（傳了 ${n} 張圖）；這篇共 ${total} 張圖已在雲端。`);
@@ -1632,6 +1741,7 @@ ${ratioOf(cur.tab)}`;
   }
   // 這篇還沒上雲的圖 → 傳到「我的 id／圖的 id」，記下網址
   async function pushImages(rec) {
+    const userId = me.id;
     let n = 0;
     try {
       for (const m of rec.images || []) {
@@ -1642,24 +1752,34 @@ ${ratioOf(cur.tab)}`;
         if (!response.ok) throw new Error('讀取圖片失敗，請重新加入圖片後再存檔。');
         const blob = await response.blob();
         const ext = ((blob.type || 'image/jpeg').split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-        const path = `${me.id}/${m.id}.${ext}`;
+        if (me?.id !== userId) throw new Error('登入帳號已變更，請重新存檔。');
+        const path = `${userId}/${m.id}.${ext}`;
         const { error } = await sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' });
         if (error) throw new Error(imgWhy(error));
         m.url = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
         n++;
       }
     } finally {
-      if (n) {   // 部分上傳失敗也記住成功的網址，下次不用再傳
-        rec.savedAt = Math.max(Date.now(), (rec.savedAt || 0) + 1);
+      if (n && me?.id === userId) {   // 部分上傳失敗也記住成功的網址，下次不用再傳
         const posts = load(K_POSTS, []);
-        const i = posts.findIndex(p => String(p.id) === String(rec.id));
-        if (i >= 0) { posts[i].images = rec.images.map(x => ({ ...x })); posts[i].savedAt = rec.savedAt; store(K_POSTS, posts); }
+        const current = posts.find(p => String(p.id) === String(rec.id));
+        const isCurrent = current && current.savedAt === rec.savedAt && current.publishDate === rec.publishDate;
+        if (!current || isCurrent) rec.savedAt = Math.max(Date.now(), (rec.savedAt || 0) + 1);
+        if (current) {
+          // 即使上傳期間又有新存檔，也只補上仍在使用的圖片網址。
+          for (const image of current.images || []) {
+            const uploaded = rec.images.find(x => x.id === image.id);
+            if (uploaded?.url) image.url ||= uploaded.url;
+          }
+          if (isCurrent) current.savedAt = rec.savedAt;
+          store(K_POSTS, posts);
+        }
         if (String(cur.id) === String(rec.id)) {
           for (const m of cur.images || []) {
             const uploaded = rec.images.find(x => x.id === m.id);
             if (uploaded && uploaded.url) m.url = uploaded.url;
           }
-          cur.savedAt = rec.savedAt;
+          if (isCurrent) cur.savedAt = rec.savedAt;
           saveDraft();
         }
       }
