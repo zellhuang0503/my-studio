@@ -117,6 +117,25 @@
   .modal.show { display: flex; }
   .modal .box { width: min(760px, 100%); max-height: 90vh; overflow: auto; }
   .modal textarea { min-height: 160px; }
+  .calendar-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .calendar-nav strong { flex: 1; text-align: center; color: var(--main); }
+  .calendar-grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+  .calendar-grid th, .calendar-grid td { border: 1px solid var(--line); padding: 5px; }
+  .calendar-grid th { background: var(--bg); }
+  .calendar-grid td { height: 76px; vertical-align: top; }
+  .calendar-grid .other-month { background: #f6f6f6; color: #666; }
+  .calendar-day { display: inline-block; padding: 2px 5px; }
+  .calendar-day[aria-current="date"] { border-radius: calc(var(--radius) / 2); background: var(--main); color: #fff; }
+  .calendar-post { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; padding: 2px 4px; border-radius: 4px; background: var(--bg); color: var(--text); font-size: 12px; }
+  @media (max-width: 640px) {
+    #mCalendar { padding: 8px; }
+    #mCalendar .box { padding: 12px 8px; }
+    .calendar-nav { gap: 4px; }
+    .calendar-nav button { font-size: 12px; padding: 6px 4px; }
+    .calendar-grid th, .calendar-grid td { padding: 2px; }
+    .calendar-grid td { height: 58px; }
+    .calendar-post { font-size: 10px; padding-inline: 2px; }
+  }
   .item { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 8px 0; }
   .item div { flex: 1; }
   .hint { font-size: 12px; color: #888; margin-top: 4px; }
@@ -139,6 +158,7 @@
   <h1 id="brandTitle">我的品牌｜社群工作台</h1>
   <button id="btnNew">＋ 新的一篇</button>
   <button id="btnList">📁 我的貼文</button>
+  <button id="btnCalendar">📅 日曆</button>
   <button id="btnMenu">📋 圖文選單</button>
   <button id="btnSet">⚙ 設定</button>
   <button id="btnLogin">🔐 登入</button>
@@ -340,6 +360,22 @@
   <div class="actions"><button class="light" data-close>關閉</button></div>
 </div></div>
 
+<!-- 貼文日曆 -->
+<div class="modal" id="mCalendar"><div class="box" role="dialog" aria-label="貼文日曆">
+  <div class="calendar-nav">
+    <button class="light" id="calPrev">‹ 上個月</button>
+    <strong id="calMonth" aria-live="polite"></strong>
+    <button class="light" id="calNext">下個月 ›</button>
+    <button class="light" id="calToday">今天</button>
+  </div>
+  <table class="calendar-grid" aria-labelledby="calMonth">
+    <thead><tr><th scope="col">日</th><th scope="col">一</th><th scope="col">二</th><th scope="col">三</th><th scope="col">四</th><th scope="col">五</th><th scope="col">六</th></tr></thead>
+    <tbody id="calDays"></tbody>
+  </table>
+  <p class="small" id="calSummary"></p>
+  <div class="actions"><button class="light" data-close>關閉</button></div>
+</div></div>
+
 <!-- 檢查官的報告 -->
 <div class="modal" id="mCheck"><div class="box">
   <h2>🔍 檢查官的報告</h2>
@@ -504,9 +540,9 @@
     const [y, m, d] = v.split('-').map(Number);
     return `${y}/${m}/${d}（${'日一二三四五六'[new Date(y, m - 1, d).getDay()]}）`;
   }
-  const topic = () => {
+  const topic = (fields = cur.fields) => {
     const f = FIELDS.find(f => f.type !== 'date');
-    return f ? (cur.fields[f.id] || '').trim() : '';
+    return f ? (fields?.[f.id] || '').trim() : '';
   };
   const cardText = () => FIELDS.map(f => {
     const v = (f.type === 'date' ? dateText(cur.fields[f.id]) : (cur.fields[f.id] || '').trim());
@@ -1388,6 +1424,58 @@ ${ratioOf(cur.tab)}`;
     if (d && confirm(me ? '確定要刪除這一篇嗎？（雲端的也會一起刪）' : '確定要刪除這一篇嗎？')) { store(K_POSTS, posts.filter(p => String(p.id) !== d)); cloudDel(d); showList(); }
   };
 
+  // 貼文日曆
+  let calendarMonth;
+  function showCalendar() {
+    const year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
+    const today = new Date();
+    const dateKey = date => [String(date.getFullYear()).padStart(4, '0'), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+    const todayKey = dateKey(today);
+    const postsByDate = new Map();
+    let unscheduled = 0, scheduled = 0;
+    for (const post of load(K_POSTS, [])) {
+      if (!post.publishDate) { unscheduled++; continue; }
+      if (!postsByDate.has(post.publishDate)) postsByDate.set(post.publishDate, []);
+      postsByDate.get(post.publishDate).push(topic(post.fields ?? {}) || post.name);
+    }
+
+    const firstWeekday = calendarMonth.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const weeks = Math.ceil((firstWeekday + daysInMonth) / 7);
+    const rows = [];
+    for (let week = 0; week < weeks; week++) {
+      const cells = [];
+      for (let weekday = 0; weekday < 7; weekday++) {
+        const date = new Date(year, month, week * 7 + weekday + 1 - firstWeekday);
+        const key = dateKey(date), inMonth = date.getMonth() === month;
+        const topics = postsByDate.get(key) || [];
+        if (inMonth) scheduled += topics.length;
+        const labels = topics.map(title => {
+          const safeTitle = esc(title);
+          return `<span class="calendar-post" title="${safeTitle}">${safeTitle}</span>`;
+        }).join('');
+        cells.push(`<td${inMonth ? '' : ' class="other-month"'}><time class="calendar-day" datetime="${key}"${key === todayKey ? ' aria-current="date"' : ''}>${date.getDate()}</time>${labels}</td>`);
+      }
+      rows.push(`<tr>${cells.join('')}</tr>`);
+    }
+    $('calMonth').textContent = `${year} 年 ${month + 1} 月`;
+    $('calDays').innerHTML = rows.join('');
+    $('calSummary').textContent = `這個月排了 ${scheduled} 篇｜還沒排日子的有 ${unscheduled} 篇`;
+  }
+  function resetCalendarMonth() {
+    const now = new Date();
+    calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    showCalendar();
+  }
+  function moveCalendarMonth(offset) {
+    calendarMonth.setMonth(calendarMonth.getMonth() + offset);
+    showCalendar();
+  }
+  $('btnCalendar').onclick = () => { resetCalendarMonth(); open('mCalendar'); };
+  $('calPrev').onclick = () => moveCalendarMonth(-1);
+  $('calNext').onclick = () => moveCalendarMonth(1);
+  $('calToday').onclick = resetCalendarMonth;
+
   // 新的一篇
   $('btnNew').onclick = () => { if (confirm('清空畫面，開始新的一篇？（存過的不會不見）')) { cur = blank(); fill(); } };
 
@@ -1510,6 +1598,7 @@ ${ratioOf(cur.tab)}`;
     const m = `⬇ 拿回來了：新增 ${add} 篇、更新 ${upd} 篇（雲端一共 ${cloudIds.size} 篇）。`;
     syncSay(m); if (auto && (add || upd)) toast(m);
     if ($('mList').classList.contains('show')) showList();
+    if ($('mCalendar').classList.contains('show')) showCalendar();
   }
   async function cloudDel(id) {
     if (!sb || !me) return;
